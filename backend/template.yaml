@@ -23,7 +23,11 @@ Parameters:
   BedrockModelId:
     Type: String
     Default: anthropic.claude-3-sonnet-20240229-v1:0
-    Description: Bedrock model identifier
+    Description: Bedrock model identifier for text generation
+  BedrockImageModelId:
+    Type: String
+    Default: bria.bria-2.3-fast-v1:0
+    Description: Bedrock model identifier for image generation (Bria AI)
 
 Resources:
   SocialMediaGeneratorFunction:
@@ -40,6 +44,7 @@ Resources:
           DATABASE_URL: sqlite+aiosqlite:///./social_media.db
           AWS_REGION_BEDROCK: !Ref AwsRegionBedrock
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          BEDROCK_IMAGE_MODEL_ID: !Ref BedrockImageModelId
           CORS_ORIGINS: "*"
           AWS_LWA_READINESS_CHECK_PATH: /health
           AWS_LWA_INVOKE_MODE: response_stream
@@ -62,7 +67,9 @@ Resources:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-              Resource: "arn:aws:bedrock:*::foundation-model/anthropic.*"
+              Resource:
+                - "arn:aws:bedrock:*::foundation-model/anthropic.*"
+                - "arn:aws:bedrock:*::foundation-model/bria.*"
     Metadata:
       Dockerfile: Dockerfile
       DockerContext: .

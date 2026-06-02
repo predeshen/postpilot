@@ -278,6 +278,7 @@ class CampaignCreative(Base):
     description = Column(Text, nullable=True)
     call_to_action = Column(String(50), nullable=False)
     image_concept = Column(Text, nullable=True)
+    image_base64 = Column(Text, nullable=True)
     ad_format = Column(Enum(AdFormat), nullable=False)
     platform_placement = Column(Enum(PlatformPlacement), nullable=False)
     status = Column(Enum(CreativeStatus), default=CreativeStatus.DRAFT)

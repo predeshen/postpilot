@@ -239,6 +239,7 @@ data class CampaignCreativeResponse(
     val description: String? = null,
     @Json(name = "call_to_action") val callToAction: String,
     @Json(name = "image_concept") val imageConcept: String? = null,
+    @Json(name = "image_base64") val imageBase64: String? = null,
     @Json(name = "ad_format") val adFormat: String,
     @Json(name = "platform_placement") val platformPlacement: String,
     val status: String,
@@ -283,4 +284,59 @@ data class CampaignListResponse(
 data class DeleteResponse(
     val detail: String,
     val id: Int
+)
+
+// ============== Image Generation Models (Bria AI) ==============
+
+@JsonClass(generateAdapter = true)
+data class ImageGenerateRequest(
+    val prompt: String,
+    val width: Int = 1080,
+    val height: Int = 1080,
+    @Json(name = "model_id") val modelId: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ImageGenerateResponse(
+    val success: Boolean,
+    @Json(name = "image_base64") val imageBase64: String? = null,
+    val width: Int,
+    val height: Int,
+    @Json(name = "model_id") val modelId: String,
+    val prompt: String,
+    @Json(name = "file_path") val filePath: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class PostImageGenerateResponse(
+    @Json(name = "post_id") val postId: Int,
+    @Json(name = "image_path") val imagePath: String? = null,
+    @Json(name = "image_base64") val imageBase64: String? = null,
+    val platform: String,
+    val success: Boolean
+)
+
+@JsonClass(generateAdapter = true)
+data class ImageModelInfo(
+    val id: String,
+    val name: String,
+    val description: String
+)
+
+@JsonClass(generateAdapter = true)
+data class ImageModelsResponse(
+    val models: List<ImageModelInfo>,
+    @Json(name = "default_model") val defaultModel: String
+)
+
+@JsonClass(generateAdapter = true)
+data class PlatformDimension(
+    val width: Int,
+    val height: Int,
+    val label: String
+)
+
+@JsonClass(generateAdapter = true)
+data class ImagePlatformsResponse(
+    val platforms: Map<String, PlatformDimension>
 )

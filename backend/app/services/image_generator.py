@@ -1,16 +1,35 @@
-"""Image template engine using Pillow for platform-specific social media images."""
+"""Image generation service using Bria AI models from AWS Bedrock.
 
+Supports three Bria models:
+- Bria 2.3 Fast (default): Quick generation for real-time use
+- Bria 2.3: Higher quality, slightly slower
+- Bria 2.2 HD: Highest quality for final ad creatives
+
+Falls back to Pillow-based template generation when Bedrock is unavailable.
+"""
+
+import base64
 import io
+import json
 import logging
 import os
 import textwrap
 from typing import Dict, List, Optional, Tuple
 
+import boto3
+from botocore.exceptions import ClientError, NoCredentialsError
 from PIL import Image, ImageDraw, ImageFont
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Available Bria models on AWS Bedrock
+BRIA_MODELS = {
+    "bria-2.3-fast": "bria.bria-2.3-fast-v1:0",
+    "bria-2.3": "bria.bria-2.3-v1:0",
+    "bria-2.2-hd": "bria.bria-2.2-hd-v1:0",
+}
 
 # Platform-specific image dimensions
 PLATFORM_DIMENSIONS = {
@@ -21,7 +40,7 @@ PLATFORM_DIMENSIONS = {
     "facebook_story": {"width": 1080, "height": 1920, "label": "Facebook Story (9:16)"},
 }
 
-# Template styles
+# Template styles (for Pillow fallback)
 TEMPLATE_STYLES = {
     "bold_text": {
         "text_position": "center",
@@ -70,62 +89,157 @@ def _get_contrast_color(bg_color: Tuple[int, int, int]) -> Tuple[int, int, int]:
     return (255, 255, 255) if luminance < 0.5 else (0, 0, 0)
 
 
+def _build_image_prompt(
+    text: str,
+    brand_colors: Optional[List[str]] = None,
+    business_name: Optional[str] = None,
+    industry: Optional[str] = None,
+    style: str = "bold_text",
+    platform: str = "instagram_feed",
+) -> str:
+    """Build a descriptive prompt for Bria AI image generation.
+
+    Incorporates brand identity, colors, industry context, and platform
+    to generate relevant social media visuals.
+    """
+    # Base prompt from the content
+    prompt_parts = []
+
+    # Add the core content/concept
+    if text:
+        # Trim long content to use as concept guidance
+        concept = text[:200] if len(text) > 200 else text
+        prompt_parts.append(f"A professional social media post visual about: {concept}")
+    else:
+        prompt_parts.append("A professional social media post visual")
+
+    # Add industry context
+    if industry:
+        prompt_parts.append(f"for a {industry} business")
+
+    # Add brand name context
+    if business_name:
+        prompt_parts.append(f"brand name: {business_name}")
+
+    # Add color guidance
+    if brand_colors and len(brand_colors) >= 1:
+        color_names = ", ".join(brand_colors[:3])
+        prompt_parts.append(f"using brand colors: {color_names}")
+
+    # Add style guidance based on template style
+    style_descriptions = {
+        "bold_text": "bold and modern design with strong typography",
+        "minimal": "clean minimal design with lots of whitespace",
+        "gradient_overlay": "vibrant gradient background with modern aesthetic",
+        "split_layout": "professional split-layout composition",
+        "quote_style": "inspirational quote card design with elegant typography",
+    }
+    style_desc = style_descriptions.get(style, "professional modern design")
+    prompt_parts.append(style_desc)
+
+    # Add platform context
+    platform_styles = {
+        "tiktok": "trendy, eye-catching, vertical format, youth-oriented",
+        "instagram_feed": "polished, aesthetic, square format, visually striking",
+        "instagram_story": "dynamic, vertical, engaging, story-friendly",
+        "facebook_feed": "professional, informative, wide format, shareable",
+        "facebook_story": "casual, personal, vertical, story format",
+    }
+    platform_style = platform_styles.get(platform, "professional social media")
+    prompt_parts.append(platform_style)
+
+    # Quality modifiers
+    prompt_parts.append("high quality, commercial photography style, clean composition, no text overlays")
+
+    return ", ".join(prompt_parts)
+
+
 class ImageGeneratorService:
-    """Service for generating platform-specific social media images."""
+    """Service for generating social media images using Bria AI on AWS Bedrock.
+
+    Primary: Uses Bria AI models from AWS Bedrock for AI-generated images.
+    Fallback: Uses Pillow-based template generation when Bedrock is unavailable.
+    """
 
     def __init__(self):
         """Initialize the image generator service."""
         self._output_dir = os.path.join(os.getcwd(), "generated_images")
         os.makedirs(self._output_dir, exist_ok=True)
+        self._bedrock_client = None
 
-    def _get_font(self, size: int) -> ImageFont.FreeTypeFont:
-        """Get a font at the specified size, falling back to default if needed."""
-        # Try common system font paths
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "C:\\Windows\\Fonts\\arial.ttf",
-        ]
+    @property
+    def bedrock_client(self):
+        """Lazy initialization of boto3 Bedrock Runtime client."""
+        if self._bedrock_client is None:
+            try:
+                session_kwargs = {"region_name": settings.aws_region}
+                if settings.aws_access_key_id and settings.aws_secret_access_key:
+                    session_kwargs["aws_access_key_id"] = settings.aws_access_key_id
+                    session_kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
 
-        for font_path in font_paths:
-            if os.path.exists(font_path):
-                try:
-                    return ImageFont.truetype(font_path, size)
-                except (IOError, OSError):
-                    continue
+                session = boto3.Session(**session_kwargs)
+                self._bedrock_client = session.client("bedrock-runtime")
+            except (NoCredentialsError, Exception) as e:
+                logger.warning(f"Failed to initialize Bedrock client: {e}")
+                self._bedrock_client = None
+        return self._bedrock_client
 
-        # Fall back to default font
-        try:
-            return ImageFont.truetype("DejaVuSans-Bold", size)
-        except (IOError, OSError):
-            return ImageFont.load_default()
-
-    def _draw_gradient(
+    def generate_image_ai(
         self,
-        draw: ImageDraw.Draw,
-        width: int,
-        height: int,
-        color_start: Tuple[int, int, int],
-        color_end: Tuple[int, int, int],
-        direction: str = "vertical",
-    ) -> None:
-        """Draw a gradient on the image."""
-        if direction == "vertical":
-            for y in range(height):
-                ratio = y / height
-                r = int(color_start[0] + (color_end[0] - color_start[0]) * ratio)
-                g = int(color_start[1] + (color_end[1] - color_start[1]) * ratio)
-                b = int(color_start[2] + (color_end[2] - color_start[2]) * ratio)
-                draw.line([(0, y), (width, y)], fill=(r, g, b))
-        else:
-            for x in range(width):
-                ratio = x / width
-                r = int(color_start[0] + (color_end[0] - color_start[0]) * ratio)
-                g = int(color_start[1] + (color_end[1] - color_start[1]) * ratio)
-                b = int(color_start[2] + (color_end[2] - color_start[2]) * ratio)
-                draw.line([(x, 0), (x, height)], fill=(r, g, b))
+        prompt: str,
+        width: int = 1080,
+        height: int = 1080,
+        model_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Generate an image using Bria AI on AWS Bedrock.
+
+        Args:
+            prompt: Text prompt describing the image to generate.
+            width: Image width in pixels.
+            height: Image height in pixels.
+            model_id: Bria model ID to use. Defaults to config setting.
+
+        Returns:
+            Base64-encoded image string, or None if generation fails.
+        """
+        if self.bedrock_client is None:
+            logger.warning("Bedrock client not available for image generation")
+            return None
+
+        model = model_id or settings.bedrock_image_model_id
+
+        try:
+            body = json.dumps({
+                "prompt": prompt,
+                "num_results": 1,
+                "width": width,
+                "height": height,
+            })
+
+            response = self.bedrock_client.invoke_model(
+                modelId=model,
+                body=body,
+                contentType="application/json",
+                accept="application/json",
+            )
+
+            result = json.loads(response["body"].read())
+            # Bria returns base64-encoded image in artifacts array
+            if "artifacts" in result and len(result["artifacts"]) > 0:
+                image_base64 = result["artifacts"][0]["base64"]
+                logger.info(f"Successfully generated image with {model} ({width}x{height})")
+                return image_base64
+            else:
+                logger.error(f"Unexpected Bria response format: {list(result.keys())}")
+                return None
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            logger.error(f"Bedrock API error ({error_code}): {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Image generation failed: {e}")
+            return None
 
     def generate_image(
         self,
@@ -134,29 +248,141 @@ class ImageGeneratorService:
         brand_colors: List[str] = None,
         style: str = "bold_text",
         business_name: Optional[str] = None,
+        industry: Optional[str] = None,
         logo_path: Optional[str] = None,
         output_filename: Optional[str] = None,
+        use_ai: bool = True,
     ) -> str:
-        """
-        Generate a social media image with text overlay.
+        """Generate a social media image.
+
+        Attempts AI generation via Bria/Bedrock first, falls back to Pillow templates.
 
         Args:
-            platform: Platform key (tiktok, instagram_feed, instagram_story, etc.)
-            text: Text to overlay on the image
+            platform: Platform key (tiktok, instagram_feed, etc.)
+            text: Text content / concept for the image
             brand_colors: List of hex color codes for the brand
             style: Template style name
             business_name: Business name for branding
-            logo_path: Path to logo file for overlay
+            industry: Business industry for prompt context
+            logo_path: Path to logo file for overlay (Pillow fallback only)
             output_filename: Custom output filename
+            use_ai: Whether to attempt AI generation (default True)
 
         Returns:
             Path to the generated image file
         """
-        # Get dimensions
+        # Get dimensions for the platform
         dimensions = PLATFORM_DIMENSIONS.get(platform, PLATFORM_DIMENSIONS["instagram_feed"])
         width = dimensions["width"]
         height = dimensions["height"]
 
+        if output_filename is None:
+            output_filename = f"{platform}_{style}_{os.getpid()}.png"
+
+        output_path = os.path.join(self._output_dir, output_filename)
+
+        # Attempt AI generation first
+        if use_ai:
+            prompt = _build_image_prompt(
+                text=text,
+                brand_colors=brand_colors,
+                business_name=business_name,
+                industry=industry,
+                style=style,
+                platform=platform,
+            )
+
+            image_base64 = self.generate_image_ai(
+                prompt=prompt,
+                width=width,
+                height=height,
+            )
+
+            if image_base64:
+                # Save the AI-generated image
+                image_data = base64.b64decode(image_base64)
+                with open(output_path, "wb") as f:
+                    f.write(image_data)
+                logger.info(f"Saved AI-generated image: {output_path} ({width}x{height})")
+                return output_path
+            else:
+                logger.info("AI generation failed, falling back to Pillow template")
+
+        # Fallback: Pillow-based template generation
+        return self._generate_pillow_fallback(
+            platform=platform,
+            text=text,
+            brand_colors=brand_colors,
+            style=style,
+            business_name=business_name,
+            logo_path=logo_path,
+            output_path=output_path,
+            width=width,
+            height=height,
+        )
+
+    def generate_image_from_prompt(
+        self,
+        prompt: str,
+        width: int = 1080,
+        height: int = 1080,
+        model_id: Optional[str] = None,
+        output_filename: Optional[str] = None,
+    ) -> Dict:
+        """Generate an image from a custom prompt (on-demand endpoint).
+
+        Args:
+            prompt: User-provided text prompt.
+            width: Image width.
+            height: Image height.
+            model_id: Optional model override.
+            output_filename: Optional filename for saving.
+
+        Returns:
+            Dict with base64 image data, file path, and metadata.
+        """
+        image_base64 = self.generate_image_ai(
+            prompt=prompt,
+            width=width,
+            height=height,
+            model_id=model_id,
+        )
+
+        result = {
+            "success": image_base64 is not None,
+            "base64": image_base64,
+            "width": width,
+            "height": height,
+            "model_id": model_id or settings.bedrock_image_model_id,
+            "prompt": prompt,
+            "file_path": None,
+        }
+
+        # Also save to file if requested or if generation succeeded
+        if image_base64:
+            if output_filename is None:
+                output_filename = f"custom_{width}x{height}_{os.getpid()}.png"
+            output_path = os.path.join(self._output_dir, output_filename)
+            image_data = base64.b64decode(image_base64)
+            with open(output_path, "wb") as f:
+                f.write(image_data)
+            result["file_path"] = output_path
+
+        return result
+
+    def _generate_pillow_fallback(
+        self,
+        platform: str,
+        text: str,
+        brand_colors: Optional[List[str]],
+        style: str,
+        business_name: Optional[str],
+        logo_path: Optional[str],
+        output_path: str,
+        width: int,
+        height: int,
+    ) -> str:
+        """Generate image using Pillow templates (fallback when Bedrock unavailable)."""
         # Get style settings
         style_config = TEMPLATE_STYLES.get(style, TEMPLATE_STYLES["bold_text"])
 
@@ -261,14 +487,56 @@ class ImageGeneratorService:
                 logger.warning(f"Failed to load logo: {e}")
 
         # Save the image
-        if output_filename is None:
-            output_filename = f"{platform}_{style}_{os.getpid()}.png"
-
-        output_path = os.path.join(self._output_dir, output_filename)
         img.save(output_path, "PNG", quality=settings.image_quality)
-
-        logger.info(f"Generated image: {output_path} ({width}x{height})")
+        logger.info(f"Generated Pillow fallback image: {output_path} ({width}x{height})")
         return output_path
+
+    def _get_font(self, size: int) -> ImageFont.FreeTypeFont:
+        """Get a font at the specified size, falling back to default if needed."""
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "C:\\Windows\\Fonts\\arial.ttf",
+        ]
+
+        for font_path in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    return ImageFont.truetype(font_path, size)
+                except (IOError, OSError):
+                    continue
+
+        try:
+            return ImageFont.truetype("DejaVuSans-Bold", size)
+        except (IOError, OSError):
+            return ImageFont.load_default()
+
+    def _draw_gradient(
+        self,
+        draw: ImageDraw.Draw,
+        width: int,
+        height: int,
+        color_start: Tuple[int, int, int],
+        color_end: Tuple[int, int, int],
+        direction: str = "vertical",
+    ) -> None:
+        """Draw a gradient on the image."""
+        if direction == "vertical":
+            for y in range(height):
+                ratio = y / height
+                r = int(color_start[0] + (color_end[0] - color_start[0]) * ratio)
+                g = int(color_start[1] + (color_end[1] - color_start[1]) * ratio)
+                b = int(color_start[2] + (color_end[2] - color_start[2]) * ratio)
+                draw.line([(0, y), (width, y)], fill=(r, g, b))
+        else:
+            for x in range(width):
+                ratio = x / width
+                r = int(color_start[0] + (color_end[0] - color_start[0]) * ratio)
+                g = int(color_start[1] + (color_end[1] - color_start[1]) * ratio)
+                b = int(color_start[2] + (color_end[2] - color_start[2]) * ratio)
+                draw.line([(x, 0), (x, height)], fill=(r, g, b))
 
     def generate_all_platform_variants(
         self,
@@ -276,17 +544,20 @@ class ImageGeneratorService:
         brand_colors: List[str] = None,
         style: str = "bold_text",
         business_name: Optional[str] = None,
+        industry: Optional[str] = None,
         prefix: str = "post",
+        use_ai: bool = True,
     ) -> Dict[str, str]:
-        """
-        Generate images for all platform dimensions.
+        """Generate images for all platform dimensions.
 
         Args:
-            text: Text to overlay
+            text: Text content / concept for the image
             brand_colors: Brand color palette
             style: Template style
             business_name: Business name for branding
+            industry: Business industry for context
             prefix: Filename prefix
+            use_ai: Whether to attempt AI generation
 
         Returns:
             Dictionary mapping platform to file path
@@ -300,7 +571,9 @@ class ImageGeneratorService:
                 brand_colors=brand_colors,
                 style=style,
                 business_name=business_name,
+                industry=industry,
                 output_filename=filename,
+                use_ai=use_ai,
             )
             results[platform_key] = path
 
@@ -316,6 +589,21 @@ class ImageGeneratorService:
     def get_platform_dimensions(self) -> Dict:
         """Get all platform dimension configurations."""
         return PLATFORM_DIMENSIONS
+
+    def get_available_models(self) -> List[Dict]:
+        """Get list of available Bria AI models."""
+        return [
+            {
+                "id": model_id,
+                "name": name,
+                "description": desc,
+            }
+            for name, model_id, desc in [
+                ("bria-2.3-fast", "bria.bria-2.3-fast-v1:0", "Quick generation, real-time use (default)"),
+                ("bria-2.3", "bria.bria-2.3-v1:0", "Higher quality, slightly slower"),
+                ("bria-2.2-hd", "bria.bria-2.2-hd-v1:0", "Highest quality, best for final ad creatives"),
+            ]
+        ]
 
 
 # Singleton instance

@@ -263,6 +263,7 @@ class CampaignCreativeResponse(BaseModel):
     description: Optional[str] = None
     call_to_action: str
     image_concept: Optional[str] = None
+    image_base64: Optional[str] = None
     ad_format: str
     platform_placement: str
     status: str
@@ -310,3 +311,36 @@ class CampaignListResponse(BaseModel):
     """Response model for campaign list."""
     campaigns: List[CampaignResponse]
     total: int
+
+
+# ============== Image Generation Schemas ==============
+
+class ImageGenerateRequest(BaseModel):
+    """Request model for on-demand image generation via Bria AI."""
+    prompt: str = Field(..., min_length=1, max_length=2000, description="Text prompt for image generation")
+    width: int = Field(default=1080, ge=256, le=2048, description="Image width in pixels")
+    height: int = Field(default=1080, ge=256, le=2048, description="Image height in pixels")
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Bria model ID. Options: bria.bria-2.3-fast-v1:0, bria.bria-2.3-v1:0, bria.bria-2.2-hd-v1:0"
+    )
+
+
+class ImageGenerateResponse(BaseModel):
+    """Response model for image generation."""
+    success: bool
+    image_base64: Optional[str] = None
+    width: int
+    height: int
+    model_id: str
+    prompt: str
+    file_path: Optional[str] = None
+
+
+class PostImageGenerateResponse(BaseModel):
+    """Response model for generating an image for a specific post."""
+    post_id: int
+    image_path: Optional[str] = None
+    image_base64: Optional[str] = None
+    platform: str
+    success: bool

@@ -113,4 +113,17 @@ interface ApiService {
 
     @DELETE("/api/campaigns/{campaign_id}")
     suspend fun deleteCampaign(@Path("campaign_id") campaignId: Int): Response<DeleteResponse>
+
+    // Image Generation endpoints (Bria AI on AWS Bedrock)
+    @POST("/api/images/generate")
+    suspend fun generateImage(@Body request: ImageGenerateRequest): Response<ImageGenerateResponse>
+
+    @POST("/api/content/{post_id}/generate-image")
+    suspend fun generatePostImage(@Path("post_id") postId: Int): Response<PostImageGenerateResponse>
+
+    @GET("/api/images/models")
+    suspend fun getImageModels(): Response<ImageModelsResponse>
+
+    @GET("/api/images/platforms")
+    suspend fun getImagePlatforms(): Response<ImagePlatformsResponse>
 }

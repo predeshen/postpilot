@@ -234,6 +234,19 @@ async def generate_creatives(
             except ValueError:
                 placement = PlatformPlacement.FEED
 
+            # Generate image for the creative using Bria AI
+            image_base64 = None
+            try:
+                image_base64 = await campaign_service.generate_creative_image(
+                    image_concept=creative_data.get("image_concept", ""),
+                    brand_colors=business_data.get("brand_colors"),
+                    business_name=business_data.get("name"),
+                    industry=business_data.get("industry"),
+                    placement=placement_value,
+                )
+            except Exception as img_err:
+                logger.warning(f"Image generation failed for creative {j}: {img_err}")
+
             creative = CampaignCreative(
                 angle_id=angle.id,
                 creative_number=j,
@@ -242,6 +255,7 @@ async def generate_creatives(
                 description=creative_data.get("description"),
                 call_to_action=creative_data.get("call_to_action", "LEARN_MORE"),
                 image_concept=creative_data.get("image_concept"),
+                image_base64=image_base64,
                 ad_format=ad_format,
                 platform_placement=placement,
                 status=CreativeStatus.DRAFT,

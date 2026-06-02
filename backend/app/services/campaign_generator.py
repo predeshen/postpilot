@@ -391,6 +391,57 @@ Generate 5 creatives that a media buyer would be excited to test."""
 
         return creatives
 
+    async def generate_creative_image(
+        self,
+        image_concept: str,
+        brand_colors: Optional[List[str]] = None,
+        business_name: Optional[str] = None,
+        industry: Optional[str] = None,
+        placement: str = "feed",
+    ) -> Optional[str]:
+        """Generate an image for a campaign creative using Bria AI.
+
+        Args:
+            image_concept: The image concept description from the creative.
+            brand_colors: Brand color palette for context.
+            business_name: Business name for context.
+            industry: Industry for context.
+            placement: Ad placement (feed, stories, reels) to determine dimensions.
+
+        Returns:
+            Base64-encoded image string, or None if generation fails.
+        """
+        from app.services.image_generator import image_generator_service, _build_image_prompt
+
+        # Map placement to platform dimensions
+        placement_to_platform = {
+            "feed": "instagram_feed",
+            "stories": "instagram_story",
+            "reels": "tiktok",
+            "audience_network": "facebook_feed",
+        }
+        platform = placement_to_platform.get(placement, "instagram_feed")
+
+        prompt = _build_image_prompt(
+            text=image_concept,
+            brand_colors=brand_colors,
+            business_name=business_name,
+            industry=industry,
+            style="bold_text",
+            platform=platform,
+        )
+
+        from app.services.image_generator import PLATFORM_DIMENSIONS
+        dims = PLATFORM_DIMENSIONS.get(platform, PLATFORM_DIMENSIONS["instagram_feed"])
+
+        image_base64 = image_generator_service.generate_image_ai(
+            prompt=prompt,
+            width=dims["width"],
+            height=dims["height"],
+        )
+
+        return image_base64
+
 
 # Singleton instance
 campaign_generator_service = CampaignGeneratorService()

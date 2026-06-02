@@ -1,6 +1,7 @@
 """Content generation and management API routes."""
 
 import logging
+import os
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -16,6 +17,9 @@ from app.models.schemas import (
     ContentCalendarResponse,
     ContentGenerateRequest,
     GeneratedPostResponse,
+    ImageGenerateRequest,
+    ImageGenerateResponse,
+    PostImageGenerateResponse,
 )
 from app.services.ai_generator import AIGeneratorService
 from app.services.image_generator import ImageGeneratorService
@@ -269,3 +273,69 @@ async def regenerate_content(
         await db.refresh(post)
 
     return post
+
+
+@router.post("/{post_id}/generate-image", response_model=PostImageGenerateResponse)
+async def generate_post_image(
+    post_id: int,
+    db: AsyncSession = Depends(get_db),
+    image_service: ImageGeneratorService = Depends(get_image_generator),
+):
+    """Generate an AI image for a specific post using Bria AI on Bedrock.
+
+    Uses the post content and associated business brand identity to generate
+    a relevant image for the post's target platform.
+    """
+    result = await db.execute(
+        select(GeneratedPost).where(GeneratedPost.id == post_id)
+    )
+    post = result.scalar_one_or_none()
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    # Get business profile for brand context
+    biz_result = await db.execute(
+        select(BusinessProfile).where(BusinessProfile.id == post.business_id)
+    )
+    business = biz_result.scalar_one_or_none()
+
+    # Determine platform key
+    platform_key = post.platform.value
+    if platform_key == "instagram":
+        platform_key = "instagram_feed"
+    elif platform_key == "facebook":
+        platform_key = "facebook_feed"
+
+    # Generate image with brand context
+    brand_colors = business.brand_colors if business else None
+    business_name = business.name if business else None
+    industry = business.industry if business else None
+
+    image_path = image_service.generate_image(
+        platform=platform_key,
+        text=post.content[:200],
+        brand_colors=brand_colors,
+        business_name=business_name,
+        industry=industry,
+        output_filename=f"post_{post_id}_{platform_key}.png",
+    )
+
+    # Update post with image path
+    post.image_path = image_path
+    await db.commit()
+
+    # Read the image file and return as base64
+    import base64
+    image_base64 = None
+    if image_path and os.path.exists(image_path):
+        with open(image_path, "rb") as f:
+            image_base64 = base64.b64encode(f.read()).decode("utf-8")
+
+    return PostImageGenerateResponse(
+        post_id=post.id,
+        image_path=image_path,
+        image_base64=image_base64,
+        platform=platform_key,
+        success=image_path is not None,
+    )
