@@ -1,0 +1,38 @@
+# Docker Compose for LOCAL DEVELOPMENT only
+# Production deployment uses AWS Lambda via SAM (see deploy-aws.sh)
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./social_media.db
+      - DEBUG=true
+      - AWS_REGION=us-east-1
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8080
+    volumes:
+      - ./uploads:/app/uploads
+      - ./generated_images:/app/generated_images
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: PostgreSQL for production-like local development
+  # Uncomment to use PostgreSQL instead of SQLite
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_DB: social_media
+  #     POSTGRES_USER: appuser
+  #     POSTGRES_PASSWORD: devpassword
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+
+# volumes:
+#   pgdata:

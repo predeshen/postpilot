@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Social Media Marketing Generator - AWS Lambda deployment
+  On-demand AI content generation with scale-to-zero cost optimization
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+  AwsRegionBedrock:
+    Type: String
+    Default: us-east-1
+    Description: AWS region where Bedrock is enabled
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-sonnet-20240229-v1:0
+    Description: Bedrock model identifier
+
+Resources:
+  SocialMediaGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      Architectures:
+        - x86_64
+      Layers:
+        # AWS Lambda Web Adapter - forwards Lambda events to the FastAPI app
+        - !Sub "arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerX86:24"
+      Environment:
+        Variables:
+          DATABASE_URL: sqlite+aiosqlite:///./social_media.db
+          AWS_REGION_BEDROCK: !Ref AwsRegionBedrock
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+          CORS_ORIGINS: "*"
+          AWS_LWA_READINESS_CHECK_PATH: /health
+          AWS_LWA_INVOKE_MODE: response_stream
+          PORT: "8000"
+      Events:
+        ApiCatchAll:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            ApiId: !Ref HttpApi
+        ApiRoot:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+            ApiId: !Ref HttpApi
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "arn:aws:bedrock:*::foundation-model/anthropic.*"
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: .
+      DockerTag: latest
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt SocialMediaGeneratorFunction.Arn
+  FunctionIamRole:
+    Description: IAM role for the Lambda function
+    Value: !GetAtt SocialMediaGeneratorFunctionRole.Arn

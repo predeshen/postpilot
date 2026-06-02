@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PostPilot Brand Colors -->
+    <color name="brand_blue">#FF2563EB</color>
+    <color name="brand_blue_light">#FFDBEAFE</color>
+    <color name="brand_blue_dark">#FF1D4ED8</color>
+
+    <color name="brand_coral">#FFFF6B6B</color>
+    <color name="brand_coral_light">#FFFFE0E0</color>
+    <color name="brand_coral_dark">#FFE63946</color>
+
+    <color name="brand_gold">#FFFFAD33</color>
+    <color name="brand_gold_light">#FFFFF3D4</color>
+
+    <!-- Platform Colors -->
+    <color name="tiktok">#FFFF0050</color>
+    <color name="instagram">#FFE4405F</color>
+    <color name="facebook">#FF1877F2</color>
+
+    <!-- Status Colors -->
+    <color name="success">#FF10B981</color>
+    <color name="warning">#FFF59E0B</color>
+    <color name="error">#FFEF4444</color>
+    <color name="info">#FF3B82F6</color>
+
+    <!-- Neutrals -->
+    <color name="neutral_dark">#FF0F172A</color>
+    <color name="neutral_medium">#FF475569</color>
+    <color name="neutral_light">#FFF8FAFC</color>
+    <color name="neutral_white">#FFFFFBFE</color>
+
+    <!-- Theme Colors -->
+    <color name="md_theme_light_primary">#FF2563EB</color>
+    <color name="md_theme_light_onPrimary">#FFFFFFFF</color>
+    <color name="md_theme_light_background">#FFFFFBFE</color>
+    <color name="md_theme_light_onBackground">#FF0F172A</color>
+    <color name="md_theme_light_surface">#FFFFFBFE</color>
+    <color name="md_theme_light_onSurface">#FF0F172A</color>
+
+    <color name="md_theme_dark_primary">#FF93C5FD</color>
+    <color name="md_theme_dark_onPrimary">#FF002B75</color>
+    <color name="md_theme_dark_background">#FF0F172A</color>
+    <color name="md_theme_dark_onBackground">#FFE2E8F0</color>
+    <color name="md_theme_dark_surface">#FF0F172A</color>
+    <color name="md_theme_dark_onSurface">#FFE2E8F0</color>
+</resources>

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PostPilot</string>
+    <string name="app_tagline">AI-Powered Content That Converts</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_welcome_title">Welcome to PostPilot</string>
+    <string name="onboarding_welcome_subtitle">Your AI-powered social media co-pilot for South African businesses</string>
+    <string name="onboarding_title">Set Up Your Brand</string>
+    <string name="onboarding_business_name">Business Name</string>
+    <string name="onboarding_industry">Industry</string>
+    <string name="onboarding_description">Description</string>
+    <string name="onboarding_target_audience">Target Audience</string>
+    <string name="onboarding_brand_voice">Brand Voice</string>
+    <string name="onboarding_brand_colors">Brand Colors</string>
+    <string name="onboarding_platforms">Platforms</string>
+    <string name="onboarding_complete">Complete Setup</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">PostPilot Dashboard</string>
+    <string name="dashboard_welcome">Welcome back!</string>
+    <string name="dashboard_total_posts">Total Posts</string>
+    <string name="dashboard_upcoming">Upcoming</string>
+    <string name="dashboard_published">Published</string>
+    <string name="dashboard_no_posts">No posts yet</string>
+
+    <!-- Schedule -->
+    <string name="schedule_title">Posting Schedule</string>
+    <string name="schedule_platform">Platform</string>
+    <string name="schedule_frequency">Frequency</string>
+    <string name="schedule_time">Posting Time</string>
+    <string name="schedule_save">Save Schedule</string>
+
+    <!-- Content -->
+    <string name="content_preview_title">Content Preview</string>
+    <string name="content_approve">Approve</string>
+    <string name="content_regenerate">Regenerate</string>
+    <string name="content_publish">Publish</string>
+
+    <!-- Trending -->
+    <string name="trending_title">Trending</string>
+    <string name="trending_hashtags">Trending Hashtags</string>
+    <string name="trending_competitors">Competitor Analysis</string>
+
+    <!-- Analytics -->
+    <string name="analytics_title">Analytics</string>
+    <string name="analytics_performance">Performance Overview</string>
+    <string name="analytics_theme_score">Theme Consistency</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_backend_url">Backend URL</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_dark_mode">Dark Mode</string>
+    <string name="settings_brand_voice">Brand Voice Calibration</string>
+
+    <!-- Platforms -->
+    <string name="platform_tiktok">TikTok</string>
+    <string name="platform_instagram">Instagram</string>
+    <string name="platform_facebook">Facebook</string>
+
+    <!-- Common -->
+    <string name="btn_back">Back</string>
+    <string name="btn_next">Next</string>
+    <string name="btn_save">Save</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="loading">Loading...</string>
+    <string name="error_generic">Something went wrong. Please try again.</string>
+    <string name="error_network">Network error. Check your connection.</string>
+</resources>

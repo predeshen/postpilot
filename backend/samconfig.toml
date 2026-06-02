@@ -1,0 +1,27 @@
+# SAM CLI deployment configuration
+# Run `sam deploy --guided` the first time to customize these values
+
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "social-media-generator"
+resolve_s3 = true
+resolve_image_repos = true
+s3_prefix = "social-media-generator"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=\"production\" AwsRegionBedrock=\"us-east-1\" BedrockModelId=\"anthropic.claude-3-sonnet-20240229-v1:0\""
+
+[default.build.parameters]
+use_container = false
+
+[staging.deploy.parameters]
+stack_name = "social-media-generator-staging"
+resolve_s3 = true
+resolve_image_repos = true
+s3_prefix = "social-media-generator-staging"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=\"staging\" AwsRegionBedrock=\"us-east-1\" BedrockModelId=\"anthropic.claude-3-sonnet-20240229-v1:0\""
