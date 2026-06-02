@@ -8,6 +8,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.marketingai.app.ui.screens.analytics.AnalyticsScreen
+import com.marketingai.app.ui.screens.campaigns.CampaignDetailScreen
+import com.marketingai.app.ui.screens.campaigns.CampaignsScreen
 import com.marketingai.app.ui.screens.content.ContentPreviewScreen
 import com.marketingai.app.ui.screens.dashboard.DashboardScreen
 import com.marketingai.app.ui.screens.onboarding.OnboardingScreen
@@ -25,6 +27,10 @@ sealed class Screen(val route: String) {
     data object Trending : Screen("trending")
     data object Analytics : Screen("analytics")
     data object Settings : Screen("settings")
+    data object Campaigns : Screen("campaigns")
+    data object CampaignDetail : Screen("campaign_detail/{campaignId}") {
+        fun createRoute(campaignId: Int) = "campaign_detail/$campaignId"
+    }
 }
 
 @Composable
@@ -62,6 +68,9 @@ fun NavGraph(
                 },
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
+                },
+                onNavigateToCampaigns = {
+                    navController.navigate(Screen.Campaigns.route)
                 }
             )
         }
@@ -97,6 +106,26 @@ fun NavGraph(
 
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Campaigns.route) {
+            CampaignsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToCampaignDetail = { campaignId ->
+                    navController.navigate(Screen.CampaignDetail.createRoute(campaignId))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.CampaignDetail.route,
+            arguments = listOf(navArgument("campaignId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val campaignId = backStackEntry.arguments?.getInt("campaignId") ?: 0
+            CampaignDetailScreen(
+                campaignId = campaignId,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

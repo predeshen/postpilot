@@ -216,3 +216,71 @@ data class ErrorResponse(
     val detail: String,
     val code: String? = null
 )
+
+// ============== Campaign Models ==============
+
+@JsonClass(generateAdapter = true)
+data class CampaignCreateRequest(
+    @Json(name = "business_id") val businessId: Int,
+    @Json(name = "campaign_name") val campaignName: String,
+    @Json(name = "campaign_objective") val campaignObjective: String,
+    @Json(name = "target_audience") val targetAudience: String? = null,
+    @Json(name = "product_service") val productService: String,
+    @Json(name = "budget_range") val budgetRange: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CampaignCreativeResponse(
+    val id: Int,
+    @Json(name = "angle_id") val angleId: Int,
+    @Json(name = "creative_number") val creativeNumber: Int,
+    val headline: String,
+    @Json(name = "primary_text") val primaryText: String,
+    val description: String? = null,
+    @Json(name = "call_to_action") val callToAction: String,
+    @Json(name = "image_concept") val imageConcept: String? = null,
+    @Json(name = "ad_format") val adFormat: String,
+    @Json(name = "platform_placement") val platformPlacement: String,
+    val status: String,
+    @Json(name = "created_at") val createdAt: String
+)
+
+@JsonClass(generateAdapter = true)
+data class CampaignAngleResponse(
+    val id: Int,
+    @Json(name = "campaign_id") val campaignId: Int,
+    @Json(name = "angle_number") val angleNumber: Int,
+    @Json(name = "hook_type") val hookType: String,
+    val title: String,
+    val description: String? = null,
+    @Json(name = "target_emotion") val targetEmotion: String? = null,
+    val creatives: List<CampaignCreativeResponse> = emptyList(),
+    @Json(name = "created_at") val createdAt: String
+)
+
+@JsonClass(generateAdapter = true)
+data class CampaignResponse(
+    val id: Int,
+    @Json(name = "business_id") val businessId: Int,
+    val name: String,
+    val objective: String,
+    @Json(name = "target_audience") val targetAudience: String? = null,
+    @Json(name = "product_service") val productService: String? = null,
+    @Json(name = "budget_range") val budgetRange: String? = null,
+    val status: String,
+    val angles: List<CampaignAngleResponse> = emptyList(),
+    @Json(name = "created_at") val createdAt: String,
+    @Json(name = "updated_at") val updatedAt: String
+)
+
+@JsonClass(generateAdapter = true)
+data class CampaignListResponse(
+    val campaigns: List<CampaignResponse>,
+    val total: Int
+)
+
+@JsonClass(generateAdapter = true)
+data class DeleteResponse(
+    val detail: String,
+    val id: Int
+)

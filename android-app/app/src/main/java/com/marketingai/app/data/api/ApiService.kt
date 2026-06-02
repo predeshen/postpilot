@@ -95,4 +95,22 @@ interface ApiService {
         @Query("platform") platform: String = "instagram",
         @Query("timezone") timezone: String = "UTC"
     ): Response<ScheduleSuggestionsResponse>
+
+    // Campaign endpoints
+    @POST("/api/campaigns/create")
+    suspend fun createCampaign(@Body request: CampaignCreateRequest): Response<CampaignResponse>
+
+    @GET("/api/campaigns/{campaign_id}")
+    suspend fun getCampaign(@Path("campaign_id") campaignId: Int): Response<CampaignResponse>
+
+    @POST("/api/campaigns/{campaign_id}/generate-creatives")
+    suspend fun generateCreatives(@Path("campaign_id") campaignId: Int): Response<CampaignResponse>
+
+    @GET("/api/campaigns/list")
+    suspend fun listCampaigns(
+        @Query("business_id") businessId: Int = 1
+    ): Response<CampaignListResponse>
+
+    @DELETE("/api/campaigns/{campaign_id}")
+    suspend fun deleteCampaign(@Path("campaign_id") campaignId: Int): Response<DeleteResponse>
 }

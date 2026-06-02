@@ -239,3 +239,74 @@ class ErrorResponse(BaseModel):
     """Response model for errors."""
     detail: str
     code: Optional[str] = None
+
+
+# ============== Campaign Schemas ==============
+
+class CampaignCreateRequest(BaseModel):
+    """Request model for creating a Meta Ads campaign."""
+    business_id: int
+    campaign_name: str = Field(..., min_length=1, max_length=255)
+    campaign_objective: str = Field(..., pattern="^(conversions|awareness|traffic|engagement|leads|app_installs)$")
+    target_audience: Optional[str] = None
+    product_service: str = Field(..., min_length=1)
+    budget_range: Optional[str] = None
+
+
+class CampaignCreativeResponse(BaseModel):
+    """Response model for a single ad creative."""
+    id: int
+    angle_id: int
+    creative_number: int
+    headline: str
+    primary_text: str
+    description: Optional[str] = None
+    call_to_action: str
+    image_concept: Optional[str] = None
+    ad_format: str
+    platform_placement: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignAngleResponse(BaseModel):
+    """Response model for a campaign angle."""
+    id: int
+    campaign_id: int
+    angle_number: int
+    hook_type: str
+    title: str
+    description: Optional[str] = None
+    target_emotion: Optional[str] = None
+    creatives: List[CampaignCreativeResponse] = Field(default_factory=list)
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignResponse(BaseModel):
+    """Response model for a campaign."""
+    id: int
+    business_id: int
+    name: str
+    objective: str
+    target_audience: Optional[str] = None
+    product_service: Optional[str] = None
+    budget_range: Optional[str] = None
+    status: str
+    angles: List[CampaignAngleResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignListResponse(BaseModel):
+    """Response model for campaign list."""
+    campaigns: List[CampaignResponse]
+    total: int

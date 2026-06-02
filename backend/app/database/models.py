@@ -45,6 +45,47 @@ class ContentPillarType(str, enum.Enum):
     TESTIMONIALS = "testimonials"
 
 
+class CampaignStatus(str, enum.Enum):
+    """Status of a meta ads campaign."""
+    DRAFT = "draft"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+
+
+class HookType(str, enum.Enum):
+    """Types of advertising angle hooks."""
+    PAIN_POINT = "pain_point"
+    ASPIRATIONAL = "aspirational"
+    SOCIAL_PROOF = "social_proof"
+    CURIOSITY = "curiosity"
+    URGENCY = "urgency"
+    CONTRARIAN = "contrarian"
+
+
+class CreativeStatus(str, enum.Enum):
+    """Status of an ad creative."""
+    DRAFT = "draft"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class AdFormat(str, enum.Enum):
+    """Meta ad formats."""
+    SINGLE_IMAGE = "single_image"
+    CAROUSEL = "carousel"
+    VIDEO = "video"
+    COLLECTION = "collection"
+
+
+class PlatformPlacement(str, enum.Enum):
+    """Meta ad platform placements."""
+    FEED = "feed"
+    STORIES = "stories"
+    REELS = "reels"
+    AUDIENCE_NETWORK = "audience_network"
+
+
 class BusinessProfile(Base):
     """Business profile with brand information."""
 
@@ -68,6 +109,7 @@ class BusinessProfile(Base):
     themes = relationship("ContentTheme", back_populates="business", cascade="all, delete-orphan")
     schedules = relationship("PostingSchedule", back_populates="business", cascade="all, delete-orphan")
     pillars = relationship("ContentPillar", back_populates="business", cascade="all, delete-orphan")
+    campaigns = relationship("Campaign", back_populates="business", cascade="all, delete-orphan")
 
 
 class GeneratedPost(Base):
@@ -183,3 +225,62 @@ class ContentPillar(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     business = relationship("BusinessProfile", back_populates="pillars")
+
+
+class Campaign(Base):
+    """Meta Ads campaign."""
+
+    __tablename__ = "campaigns"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    business_id = Column(Integer, ForeignKey("business_profiles.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    objective = Column(String(100), nullable=False)
+    target_audience = Column(Text, nullable=True)
+    product_service = Column(Text, nullable=True)
+    budget_range = Column(String(100), nullable=True)
+    status = Column(Enum(CampaignStatus), default=CampaignStatus.DRAFT)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    business = relationship("BusinessProfile", back_populates="campaigns")
+    angles = relationship("CampaignAngle", back_populates="campaign", cascade="all, delete-orphan")
+
+
+class CampaignAngle(Base):
+    """Advertising angle for a campaign."""
+
+    __tablename__ = "campaign_angles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id"), nullable=False)
+    angle_number = Column(Integer, nullable=False)
+    hook_type = Column(Enum(HookType), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    target_emotion = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    campaign = relationship("Campaign", back_populates="angles")
+    creatives = relationship("CampaignCreative", back_populates="angle", cascade="all, delete-orphan")
+
+
+class CampaignCreative(Base):
+    """Ad creative for a campaign angle."""
+
+    __tablename__ = "campaign_creatives"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    angle_id = Column(Integer, ForeignKey("campaign_angles.id"), nullable=False)
+    creative_number = Column(Integer, nullable=False)
+    headline = Column(String(255), nullable=False)
+    primary_text = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    call_to_action = Column(String(50), nullable=False)
+    image_concept = Column(Text, nullable=True)
+    ad_format = Column(Enum(AdFormat), nullable=False)
+    platform_placement = Column(Enum(PlatformPlacement), nullable=False)
+    status = Column(Enum(CreativeStatus), default=CreativeStatus.DRAFT)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    angle = relationship("CampaignAngle", back_populates="creatives")
