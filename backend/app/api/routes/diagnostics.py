@@ -60,7 +60,7 @@ async def test_aws_connection():
     try:
         session = boto3.Session(**session_kwargs)
         bedrock_client = session.client("bedrock")
-        bedrock_client.list_foundation_models(maxResults=1)
+        bedrock_client.list_foundation_models(byOutputModality="TEXT")
     except NoCredentialsError as e:
         result["bedrock_text_model"]["message"] = f"Credentials error: {e}"
         result["bedrock_image_model"]["message"] = f"Credentials error: {e}"
