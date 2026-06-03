@@ -56,28 +56,21 @@ async def test_aws_connection():
         "aws_secret_access_key": settings.aws_secret_access_key,
     }
 
-    # Step 2: Test Bedrock client initialization and list models
+    # Step 2: Initialize session and runtime client
     try:
         session = boto3.Session(**session_kwargs)
-        bedrock_client = session.client("bedrock")
-        bedrock_client.list_foundation_models(byOutputModality="TEXT")
+        runtime_client = session.client("bedrock-runtime")
     except NoCredentialsError as e:
         result["bedrock_text_model"]["message"] = f"Credentials error: {e}"
         result["bedrock_image_model"]["message"] = f"Credentials error: {e}"
         return result
-    except ClientError as e:
-        error_msg = e.response.get("Error", {}).get("Message", str(e))
-        result["bedrock_text_model"]["message"] = f"Bedrock client error: {error_msg}"
-        result["bedrock_image_model"]["message"] = f"Bedrock client error: {error_msg}"
-        return result
     except Exception as e:
-        result["bedrock_text_model"]["message"] = f"Unexpected error: {e}"
-        result["bedrock_image_model"]["message"] = f"Unexpected error: {e}"
+        result["bedrock_text_model"]["message"] = f"Session error: {e}"
+        result["bedrock_image_model"]["message"] = f"Session error: {e}"
         return result
 
     # Step 3: Test text model (Claude) via bedrock-runtime
     try:
-        runtime_client = session.client("bedrock-runtime")
         body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": 10,
