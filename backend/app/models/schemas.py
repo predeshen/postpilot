@@ -316,7 +316,7 @@ class ImageGenerateRequest(BaseModel):
     height: int = Field(default=1080, ge=256, le=2048, description="Image height in pixels")
     model_id: Optional[str] = Field(
         default=None,
-        description="Bria model ID. Options: bria.bria-2.3-fast-v1:0, bria.bria-2.3-v1:0, bria.bria-2.2-hd-v1:0"
+        description="Bria model ID. Options: bria-ai-2-3-fast-commercial, bria-ai-2-3-commercial, bria-ai-2-2-hd-commercial"
     )
 
 

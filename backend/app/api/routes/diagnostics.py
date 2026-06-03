@@ -1,4 +1,10 @@
-"""Diagnostics API routes for testing AWS Bedrock connectivity."""
+"""Diagnostics API routes for testing AWS connectivity.
+
+Provides separate endpoints for testing:
+- Claude text model via Bedrock
+- Bria image model via SageMaker
+- Combined test for convenience
+"""
 
 import base64
 import json
@@ -14,63 +20,44 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 
 
-@router.get("/test-aws")
-async def test_aws_connection():
-    """Test AWS Bedrock connectivity and model access.
+@router.get("/test-claude")
+async def test_claude_connection():
+    """Test Claude text model connectivity via AWS Bedrock.
 
     Verifies:
     1. AWS credentials are configured
-    2. Bedrock client can be initialized
-    3. Text model (Claude) can generate a response
-    4. Image model (Bria) can generate an image
+    2. Bedrock Runtime client can be initialized
+    3. Claude model can generate a response
     """
     result = {
-        "aws_credentials_configured": False,
-        "aws_region": settings.aws_region,
-        "aws_image_region": settings.aws_image_region,
-        "bedrock_text_model": {
-            "model_id": settings.bedrock_model_id,
-            "status": "error",
-            "message": "Not tested",
-            "response_preview": None,
-        },
-        "bedrock_image_model": {
-            "model_id": settings.bedrock_image_model_id,
-            "status": "error",
-            "message": "Not tested",
-            "image_size_bytes": None,
-        },
+        "status": "error",
+        "model_id": settings.bedrock_model_id,
+        "region": settings.aws_region,
+        "message": "Not tested",
+        "response_preview": None,
     }
 
-    # Step 1: Check if credentials are configured
+    # Check if credentials are configured
     if not settings.aws_access_key_id or not settings.aws_secret_access_key:
-        result["bedrock_text_model"]["message"] = "AWS credentials not configured"
-        result["bedrock_image_model"]["message"] = "AWS credentials not configured"
+        result["message"] = "AWS credentials not configured"
         return result
 
-    result["aws_credentials_configured"] = True
-
-    # Build session kwargs
-    session_kwargs = {
-        "region_name": settings.aws_region,
-        "aws_access_key_id": settings.aws_access_key_id,
-        "aws_secret_access_key": settings.aws_secret_access_key,
-    }
-
-    # Step 2: Initialize session and runtime client
+    # Initialize session and runtime client
     try:
-        session = boto3.Session(**session_kwargs)
+        session = boto3.Session(
+            region_name=settings.aws_region,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+        )
         runtime_client = session.client("bedrock-runtime")
     except NoCredentialsError as e:
-        result["bedrock_text_model"]["message"] = f"Credentials error: {e}"
-        result["bedrock_image_model"]["message"] = f"Credentials error: {e}"
+        result["message"] = f"Credentials error: {e}"
         return result
     except Exception as e:
-        result["bedrock_text_model"]["message"] = f"Session error: {e}"
-        result["bedrock_image_model"]["message"] = f"Session error: {e}"
+        result["message"] = f"Session error: {e}"
         return result
 
-    # Step 3: Test text model (Claude) via bedrock-runtime
+    # Test text model (Claude) via bedrock-runtime
     try:
         body = json.dumps({
             "anthropic_version": "bedrock-2023-05-31",
@@ -91,55 +78,122 @@ async def test_aws_connection():
         response_body = json.loads(response["body"].read())
         content_text = response_body["content"][0]["text"]
 
-        result["bedrock_text_model"]["status"] = "connected"
-        result["bedrock_text_model"]["message"] = "Successfully generated response"
-        result["bedrock_text_model"]["response_preview"] = content_text[:50]
+        result["status"] = "connected"
+        result["message"] = "Success"
+        result["response_preview"] = content_text[:50]
 
     except ClientError as e:
         error_msg = e.response.get("Error", {}).get("Message", str(e))
-        result["bedrock_text_model"]["message"] = f"Text model error: {error_msg}"
+        result["message"] = f"Text model error: {error_msg}"
     except Exception as e:
-        result["bedrock_text_model"]["message"] = f"Text model error: {e}"
+        result["message"] = f"Text model error: {e}"
 
-    # Step 4: Test image model (Bria) via bedrock-runtime (separate region: ca-central-1)
+    return result
+
+
+@router.get("/test-bria")
+async def test_bria_connection():
+    """Test Bria image model connectivity via AWS SageMaker.
+
+    Verifies:
+    1. SageMaker endpoint name is configured
+    2. AWS credentials are configured
+    3. SageMaker endpoint can generate an image
+    """
+    result = {
+        "status": "error",
+        "endpoint_name": settings.sagemaker_endpoint_name,
+        "region": settings.aws_region,
+        "message": "Not tested",
+        "image_size_bytes": None,
+    }
+
+    # Check if endpoint is configured
+    if not settings.sagemaker_endpoint_name:
+        result["status"] = "not_deployed"
+        result["message"] = (
+            "Endpoint not configured - deploy Bria first. "
+            "Set SAGEMAKER_ENDPOINT_NAME in your .env file."
+        )
+        return result
+
+    # Check if credentials are configured
+    if not settings.aws_access_key_id or not settings.aws_secret_access_key:
+        result["message"] = "AWS credentials not configured"
+        return result
+
+    # Initialize SageMaker Runtime client
     try:
-        image_session = boto3.Session(
-            region_name=settings.aws_image_region,
+        session = boto3.Session(
+            region_name=settings.aws_region,
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
         )
-        image_client = image_session.client("bedrock-runtime")
-        body = json.dumps({
-            "prompt": "test",
-            "num_results": 1,
-            "width": 256,
-            "height": 256,
+        sagemaker_client = session.client("sagemaker-runtime")
+    except NoCredentialsError as e:
+        result["message"] = f"Credentials error: {e}"
+        return result
+    except Exception as e:
+        result["message"] = f"Session error: {e}"
+        return result
+
+    # Test Bria via SageMaker endpoint
+    try:
+        payload = json.dumps({
+            "prompt": "test image",
+            "steps": 8,
+            "eula_license_agreement": True,
+            "seed": 42,
+            "aspect_ratio": "1:1",
+            "negative_prompt": "text, watermark",
         })
 
-        response = image_client.invoke_model(
-            modelId=settings.bedrock_image_model_id,
-            body=body,
-            contentType="application/json",
-            accept="application/json",
+        response = sagemaker_client.invoke_endpoint(
+            EndpointName=settings.sagemaker_endpoint_name,
+            ContentType="application/json",
+            Accept="application/json",
+            Body=payload,
         )
 
-        response_body = json.loads(response["body"].read())
+        response_body = json.loads(response["Body"].read())
 
-        if "artifacts" in response_body and len(response_body["artifacts"]) > 0:
-            image_base64 = response_body["artifacts"][0]["base64"]
-            image_bytes = base64.b64decode(image_base64)
-            result["bedrock_image_model"]["status"] = "connected"
-            result["bedrock_image_model"]["message"] = "Successfully generated image"
-            result["bedrock_image_model"]["image_size_bytes"] = len(image_bytes)
+        if response_body.get("result") == "success" and "artifacts" in response_body:
+            if len(response_body["artifacts"]) > 0:
+                image_base64 = response_body["artifacts"][0]["image_base64"]
+                image_bytes = base64.b64decode(image_base64)
+                result["status"] = "connected"
+                result["message"] = "Success"
+                result["image_size_bytes"] = len(image_bytes)
+            else:
+                result["message"] = "No artifacts in response"
         else:
-            result["bedrock_image_model"]["message"] = (
+            result["message"] = (
                 f"Unexpected response format: {list(response_body.keys())}"
             )
 
     except ClientError as e:
         error_msg = e.response.get("Error", {}).get("Message", str(e))
-        result["bedrock_image_model"]["message"] = f"Image model error: {error_msg}"
+        result["message"] = f"SageMaker error: {error_msg}"
     except Exception as e:
-        result["bedrock_image_model"]["message"] = f"Image model error: {e}"
+        result["message"] = f"SageMaker error: {e}"
 
     return result
+
+
+@router.get("/test-aws")
+async def test_aws_connection():
+    """Test all AWS connectivity (Claude via Bedrock + Bria via SageMaker).
+
+    Runs both tests and returns combined results for convenience.
+    """
+    claude_result = await test_claude_connection()
+    bria_result = await test_bria_connection()
+
+    return {
+        "aws_credentials_configured": bool(
+            settings.aws_access_key_id and settings.aws_secret_access_key
+        ),
+        "aws_region": settings.aws_region,
+        "bedrock_text_model": claude_result,
+        "sagemaker_image_model": bria_result,
+    }

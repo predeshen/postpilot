@@ -18,15 +18,17 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./social_media.db"
 
-    # AWS Bedrock
+    # AWS Configuration (single region for everything)
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None
-    aws_region: str = "eu-central-1"
-    bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
+    aws_region: str = "ca-central-1"
 
-    # Bria image model (different region)
-    aws_image_region: str = "ca-central-1"
-    bedrock_image_model_id: str = "bria.bria-ai-2-3-fast-commercial"
+    # Claude (Bedrock)
+    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    # Bria Image Generation (SageMaker Marketplace)
+    bedrock_image_model_id: str = "bria-ai-2-3-fast-commercial"
+    sagemaker_endpoint_name: Optional[str] = None
 
     # Scheduler
     scheduler_enabled: bool = True

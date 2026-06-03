@@ -1,4 +1,4 @@
-"""Image generation API routes using Bria AI on AWS Bedrock."""
+"""Image generation API routes using Bria AI on AWS SageMaker."""
 
 import logging
 
@@ -17,15 +17,17 @@ async def generate_image(
     request: ImageGenerateRequest,
     image_service: ImageGeneratorService = Depends(get_image_generator),
 ):
-    """Generate an AI image from a text prompt using Bria AI on AWS Bedrock.
+    """Generate an AI image from a text prompt using Bria AI on SageMaker.
 
     This endpoint allows on-demand image generation with custom prompts,
     dimensions, and optional model selection.
 
-    Available models:
-    - bria.bria-2.3-fast-v1:0 (default) - Quick generation
-    - bria.bria-2.3-v1:0 - Higher quality
-    - bria.bria-2.2-hd-v1:0 - Highest quality
+    Available models (SageMaker Marketplace):
+    - bria-ai-2-3-fast-commercial (default) - Quick generation
+    - bria-ai-2-3-commercial - Higher quality
+    - bria-ai-2-2-hd-commercial - Highest quality
+
+    Note: Requires a deployed SageMaker endpoint (SAGEMAKER_ENDPOINT_NAME).
     """
     result = image_service.generate_image_from_prompt(
         prompt=request.prompt,
@@ -49,10 +51,10 @@ async def generate_image(
 async def list_available_models(
     image_service: ImageGeneratorService = Depends(get_image_generator),
 ):
-    """List available Bria AI image generation models."""
+    """List available Bria AI image generation models (SageMaker Marketplace)."""
     return {
         "models": image_service.get_available_models(),
-        "default_model": "bria.bria-2.3-fast-v1:0",
+        "default_model": "bria-ai-2-3-fast-commercial",
     }
 
 

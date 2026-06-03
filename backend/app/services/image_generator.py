@@ -1,11 +1,10 @@
-"""Image generation service using Bria AI models from AWS Bedrock.
+"""Image generation service using Bria AI models via AWS SageMaker.
 
-Supports three Bria models:
-- Bria 2.3 Fast (default): Quick generation for real-time use
-- Bria 2.3: Higher quality, slightly slower
-- Bria 2.2 HD: Highest quality for final ad creatives
+Bria 2.3 Fast Commercial is a SageMaker Marketplace model that requires
+a deployed SageMaker endpoint. It is NOT a direct Bedrock model.
 
-Falls back to Pillow-based template generation when Bedrock is unavailable.
+Falls back to Pillow-based template generation when the SageMaker endpoint
+is not configured or unavailable.
 """
 
 import base64
@@ -13,6 +12,7 @@ import io
 import json
 import logging
 import os
+import random
 import textwrap
 from typing import Dict, List, Optional, Tuple
 
@@ -24,19 +24,28 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Available Bria models on AWS Bedrock
+# Available Bria models on SageMaker Marketplace
 BRIA_MODELS = {
-    "bria-2.3-fast": "bria.bria-2.3-fast-v1:0",
-    "bria-2.3": "bria.bria-2.3-v1:0",
-    "bria-2.2-hd": "bria.bria-2.2-hd-v1:0",
+    "bria-2.3-fast": "bria-ai-2-3-fast-commercial",
+    "bria-2.3": "bria-ai-2-3-commercial",
+    "bria-2.2-hd": "bria-ai-2-2-hd-commercial",
 }
 
-# Platform-specific image dimensions
+# Bria aspect ratios (SageMaker model uses aspect ratios, not pixel dimensions)
+BRIA_ASPECT_RATIOS = {
+    "tiktok": "9:16",
+    "instagram_feed": "1:1",
+    "instagram_story": "9:16",
+    "facebook_feed": "16:9",
+    "facebook_story": "9:16",
+}
+
+# Platform-specific image dimensions (used for Pillow fallback)
 PLATFORM_DIMENSIONS = {
     "tiktok": {"width": 1080, "height": 1920, "label": "TikTok (9:16)"},
     "instagram_feed": {"width": 1080, "height": 1080, "label": "Instagram Feed (1:1)"},
     "instagram_story": {"width": 1080, "height": 1920, "label": "Instagram Story (9:16)"},
-    "facebook_feed": {"width": 1200, "height": 630, "label": "Facebook Feed"},
+    "facebook_feed": {"width": 1200, "height": 630, "label": "Facebook Feed (16:9)"},
     "facebook_story": {"width": 1080, "height": 1920, "label": "Facebook Story (9:16)"},
 }
 
@@ -155,87 +164,110 @@ def _build_image_prompt(
 
 
 class ImageGeneratorService:
-    """Service for generating social media images using Bria AI on AWS Bedrock.
+    """Service for generating social media images using Bria AI on SageMaker.
 
-    Primary: Uses Bria AI models from AWS Bedrock for AI-generated images.
-    Fallback: Uses Pillow-based template generation when Bedrock is unavailable.
+    Primary: Uses Bria AI models via SageMaker endpoint for AI-generated images.
+    Fallback: Uses Pillow-based template generation when endpoint is unavailable.
     """
 
     def __init__(self):
         """Initialize the image generator service."""
         self._output_dir = os.path.join(os.getcwd(), "generated_images")
         os.makedirs(self._output_dir, exist_ok=True)
-        self._bedrock_client = None
+        self._sagemaker_client = None
 
     @property
-    def bedrock_client(self):
-        """Lazy initialization of boto3 Bedrock Runtime client for Bria (ca-central-1)."""
-        if self._bedrock_client is None:
+    def sagemaker_client(self):
+        """Lazy initialization of boto3 SageMaker Runtime client."""
+        if self._sagemaker_client is None:
             try:
-                session_kwargs = {"region_name": settings.aws_image_region}
+                session_kwargs = {"region_name": settings.aws_region}
                 if settings.aws_access_key_id and settings.aws_secret_access_key:
                     session_kwargs["aws_access_key_id"] = settings.aws_access_key_id
                     session_kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
 
                 session = boto3.Session(**session_kwargs)
-                self._bedrock_client = session.client("bedrock-runtime")
+                self._sagemaker_client = session.client("sagemaker-runtime")
             except (NoCredentialsError, Exception) as e:
-                logger.warning(f"Failed to initialize Bedrock client: {e}")
-                self._bedrock_client = None
-        return self._bedrock_client
+                logger.warning(f"Failed to initialize SageMaker client: {e}")
+                self._sagemaker_client = None
+        return self._sagemaker_client
 
     def generate_image_ai(
         self,
         prompt: str,
-        width: int = 1080,
-        height: int = 1080,
-        model_id: Optional[str] = None,
+        platform: str = "instagram_feed",
+        negative_prompt: str = "text, watermark, blurry, low quality",
+        steps: int = 20,
+        seed: Optional[int] = None,
     ) -> Optional[str]:
-        """Generate an image using Bria AI on AWS Bedrock.
+        """Generate an image using Bria AI on SageMaker.
 
         Args:
             prompt: Text prompt describing the image to generate.
-            width: Image width in pixels.
-            height: Image height in pixels.
-            model_id: Bria model ID to use. Defaults to config setting.
+            platform: Platform key to determine aspect ratio.
+            negative_prompt: Things to avoid in the generated image.
+            steps: Number of inference steps (higher = better quality, slower).
+            seed: Random seed for reproducibility. None for random.
 
         Returns:
             Base64-encoded image string, or None if generation fails.
         """
-        if self.bedrock_client is None:
-            logger.warning("Bedrock client not available for image generation")
+        if not settings.sagemaker_endpoint_name:
+            logger.warning(
+                "SageMaker endpoint not configured. "
+                "Set SAGEMAKER_ENDPOINT_NAME to use Bria AI image generation."
+            )
             return None
 
-        model = model_id or settings.bedrock_image_model_id
+        if self.sagemaker_client is None:
+            logger.warning("SageMaker client not available for image generation")
+            return None
+
+        # Determine aspect ratio from platform
+        aspect_ratio = BRIA_ASPECT_RATIOS.get(platform, "1:1")
+
+        # Use random seed if not specified
+        if seed is None:
+            seed = random.randint(1, 2**31 - 1)
 
         try:
-            body = json.dumps({
+            payload = json.dumps({
                 "prompt": prompt,
-                "num_results": 1,
-                "width": width,
-                "height": height,
+                "steps": steps,
+                "eula_license_agreement": True,
+                "seed": seed,
+                "aspect_ratio": aspect_ratio,
+                "negative_prompt": negative_prompt,
             })
 
-            response = self.bedrock_client.invoke_model(
-                modelId=model,
-                body=body,
-                contentType="application/json",
-                accept="application/json",
+            response = self.sagemaker_client.invoke_endpoint(
+                EndpointName=settings.sagemaker_endpoint_name,
+                ContentType="application/json",
+                Accept="application/json",
+                Body=payload,
             )
 
-            result = json.loads(response["body"].read())
-            # Bria returns base64-encoded image in artifacts array
-            if "artifacts" in result and len(result["artifacts"]) > 0:
-                image_base64 = result["artifacts"][0]["base64"]
-                logger.info(f"Successfully generated image with {model} ({width}x{height})")
-                return image_base64
-            else:
-                logger.error(f"Unexpected Bria response format: {list(result.keys())}")
-                return None
+            result = json.loads(response["Body"].read())
+
+            # Bria SageMaker response format
+            if result.get("result") == "success" and "artifacts" in result:
+                if len(result["artifacts"]) > 0:
+                    image_base64 = result["artifacts"][0]["image_base64"]
+                    logger.info(
+                        f"Successfully generated image via SageMaker "
+                        f"(endpoint={settings.sagemaker_endpoint_name}, "
+                        f"aspect_ratio={aspect_ratio})"
+                    )
+                    return image_base64
+
+            logger.error(f"Unexpected Bria response format: {list(result.keys())}")
+            return None
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            logger.error(f"Bedrock API error ({error_code}): {e}")
+            error_msg = e.response.get("Error", {}).get("Message", str(e))
+            logger.error(f"SageMaker API error ({error_code}): {error_msg}")
             return None
         except Exception as e:
             logger.error(f"Image generation failed: {e}")
@@ -255,7 +287,7 @@ class ImageGeneratorService:
     ) -> str:
         """Generate a social media image.
 
-        Attempts AI generation via Bria/Bedrock first, falls back to Pillow templates.
+        Attempts AI generation via Bria/SageMaker first, falls back to Pillow templates.
 
         Args:
             platform: Platform key (tiktok, instagram_feed, etc.)
@@ -294,8 +326,7 @@ class ImageGeneratorService:
 
             image_base64 = self.generate_image_ai(
                 prompt=prompt,
-                width=width,
-                height=height,
+                platform=platform,
             )
 
             if image_base64:
@@ -333,19 +364,20 @@ class ImageGeneratorService:
 
         Args:
             prompt: User-provided text prompt.
-            width: Image width.
-            height: Image height.
-            model_id: Optional model override.
+            width: Image width (used to determine aspect ratio).
+            height: Image height (used to determine aspect ratio).
+            model_id: Optional model override (unused, kept for API compat).
             output_filename: Optional filename for saving.
 
         Returns:
             Dict with base64 image data, file path, and metadata.
         """
+        # Map width/height to the closest platform for aspect ratio
+        platform = self._dimensions_to_platform(width, height)
+
         image_base64 = self.generate_image_ai(
             prompt=prompt,
-            width=width,
-            height=height,
-            model_id=model_id,
+            platform=platform,
         )
 
         result = {
@@ -358,7 +390,7 @@ class ImageGeneratorService:
             "file_path": None,
         }
 
-        # Also save to file if requested or if generation succeeded
+        # Also save to file if generation succeeded
         if image_base64:
             if output_filename is None:
                 output_filename = f"custom_{width}x{height}_{os.getpid()}.png"
@@ -369,6 +401,16 @@ class ImageGeneratorService:
             result["file_path"] = output_path
 
         return result
+
+    def _dimensions_to_platform(self, width: int, height: int) -> str:
+        """Map pixel dimensions to the closest platform key for aspect ratio."""
+        ratio = width / height if height > 0 else 1.0
+        if ratio > 1.5:
+            return "facebook_feed"  # 16:9
+        elif ratio < 0.7:
+            return "tiktok"  # 9:16
+        else:
+            return "instagram_feed"  # 1:1
 
     def _generate_pillow_fallback(
         self,
@@ -382,7 +424,7 @@ class ImageGeneratorService:
         width: int,
         height: int,
     ) -> str:
-        """Generate image using Pillow templates (fallback when Bedrock unavailable)."""
+        """Generate image using Pillow templates (fallback when SageMaker unavailable)."""
         # Get style settings
         style_config = TEMPLATE_STYLES.get(style, TEMPLATE_STYLES["bold_text"])
 
@@ -591,7 +633,7 @@ class ImageGeneratorService:
         return PLATFORM_DIMENSIONS
 
     def get_available_models(self) -> List[Dict]:
-        """Get list of available Bria AI models."""
+        """Get list of available Bria AI models (SageMaker Marketplace)."""
         return [
             {
                 "id": model_id,
@@ -599,9 +641,9 @@ class ImageGeneratorService:
                 "description": desc,
             }
             for name, model_id, desc in [
-                ("bria-2.3-fast", "bria.bria-2.3-fast-v1:0", "Quick generation, real-time use (default)"),
-                ("bria-2.3", "bria.bria-2.3-v1:0", "Higher quality, slightly slower"),
-                ("bria-2.2-hd", "bria.bria-2.2-hd-v1:0", "Highest quality, best for final ad creatives"),
+                ("bria-2.3-fast", "bria-ai-2-3-fast-commercial", "Quick generation, real-time use (default)"),
+                ("bria-2.3", "bria-ai-2-3-commercial", "Higher quality, slightly slower"),
+                ("bria-2.2-hd", "bria-ai-2-2-hd-commercial", "Highest quality, best for final ad creatives"),
             ]
         ]
 
