@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database.base import init_db, close_db
-from app.api.routes import business, content, trends, analytics, schedule, campaigns, images
+from app.api.routes import business, content, trends, analytics, schedule, campaigns, images, diagnostics
 from app.models.schemas import HealthResponse
 
 # Configure logging
@@ -67,6 +67,7 @@ app.include_router(analytics.router)
 app.include_router(schedule.router)
 app.include_router(campaigns.router)
 app.include_router(images.router)
+app.include_router(diagnostics.router)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
