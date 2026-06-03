@@ -169,10 +169,10 @@ class ImageGeneratorService:
 
     @property
     def bedrock_client(self):
-        """Lazy initialization of boto3 Bedrock Runtime client."""
+        """Lazy initialization of boto3 Bedrock Runtime client for Bria (ca-central-1)."""
         if self._bedrock_client is None:
             try:
-                session_kwargs = {"region_name": settings.aws_region}
+                session_kwargs = {"region_name": settings.aws_image_region}
                 if settings.aws_access_key_id and settings.aws_secret_access_key:
                     session_kwargs["aws_access_key_id"] = settings.aws_access_key_id
                     session_kwargs["aws_secret_access_key"] = settings.aws_secret_access_key

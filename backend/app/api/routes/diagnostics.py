@@ -27,6 +27,7 @@ async def test_aws_connection():
     result = {
         "aws_credentials_configured": False,
         "aws_region": settings.aws_region,
+        "aws_image_region": settings.aws_image_region,
         "bedrock_text_model": {
             "model_id": settings.bedrock_model_id,
             "status": "error",
@@ -100,9 +101,14 @@ async def test_aws_connection():
     except Exception as e:
         result["bedrock_text_model"]["message"] = f"Text model error: {e}"
 
-    # Step 4: Test image model (Bria) via bedrock-runtime
+    # Step 4: Test image model (Bria) via bedrock-runtime (separate region: ca-central-1)
     try:
-        runtime_client = session.client("bedrock-runtime")
+        image_session = boto3.Session(
+            region_name=settings.aws_image_region,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+        )
+        image_client = image_session.client("bedrock-runtime")
         body = json.dumps({
             "prompt": "test",
             "num_results": 1,
@@ -110,7 +116,7 @@ async def test_aws_connection():
             "height": 256,
         })
 
-        response = runtime_client.invoke_model(
+        response = image_client.invoke_model(
             modelId=settings.bedrock_image_model_id,
             body=body,
             contentType="application/json",

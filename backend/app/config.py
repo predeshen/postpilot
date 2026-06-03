@@ -23,7 +23,10 @@ class Settings(BaseSettings):
     aws_secret_access_key: Optional[str] = None
     aws_region: str = "eu-central-1"
     bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
-    bedrock_image_model_id: str = "bria.bria-2.3-fast-v1:0"
+
+    # Bria image model (different region)
+    aws_image_region: str = "ca-central-1"
+    bedrock_image_model_id: str = "bria.bria-ai-2-3-fast-commercial"
 
     # Scheduler
     scheduler_enabled: bool = True
