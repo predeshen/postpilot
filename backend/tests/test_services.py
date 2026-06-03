@@ -429,11 +429,11 @@ class TestContentScheduler:
 
     def test_should_generate_content(self):
         """Test content generation timing logic."""
-        from datetime import datetime
+        from datetime import datetime, timezone
         # With no last generation, should generate
         result = self.service.should_generate_content(
             last_generated_at=None,
-            schedule_time=datetime.utcnow().strftime("%H:%M"),
+            schedule_time=datetime.now(timezone.utc).strftime("%H:%M"),
         )
         # Result depends on timing window, just verify it returns a bool
         assert isinstance(result, bool)

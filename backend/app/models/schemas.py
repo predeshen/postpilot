@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============== Business Schemas ==============
@@ -50,8 +50,7 @@ class BusinessResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ============== Content Schemas ==============
@@ -86,8 +85,7 @@ class GeneratedPostResponse(BaseModel):
     theme_score: Optional[float] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContentCalendarResponse(BaseModel):
@@ -191,8 +189,7 @@ class ScheduleResponse(BaseModel):
     series_name: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScheduleListResponse(BaseModel):
@@ -269,8 +266,7 @@ class CampaignCreativeResponse(BaseModel):
     status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CampaignAngleResponse(BaseModel):
@@ -285,8 +281,7 @@ class CampaignAngleResponse(BaseModel):
     creatives: List[CampaignCreativeResponse] = Field(default_factory=list)
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CampaignResponse(BaseModel):
@@ -303,8 +298,7 @@ class CampaignResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CampaignListResponse(BaseModel):

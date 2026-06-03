@@ -12,7 +12,7 @@ endpoint at desired intervals rather than running a persistent background worker
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -163,7 +163,7 @@ class ContentSchedulerService:
             List of content series suggestions
         """
         if day_of_week is None:
-            day_of_week = datetime.utcnow().weekday()
+            day_of_week = datetime.now(timezone.utc).weekday()
 
         suggestions = []
         for series_id, series in CONTENT_SERIES.items():
@@ -187,7 +187,7 @@ class ContentSchedulerService:
         Returns:
             List of upcoming holidays/events
         """
-        today = datetime.utcnow().date()
+        today = datetime.now(timezone.utc).date()
         upcoming = []
 
         for i in range(days_ahead):

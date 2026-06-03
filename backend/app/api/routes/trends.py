@@ -1,7 +1,7 @@
 """Trending hashtags and competitor analysis API routes."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -50,7 +50,7 @@ async def get_trending_hashtags(
     return TrendsResponse(
         platform=platform,
         hashtags=hashtag_responses,
-        updated_at=datetime.utcnow(),
+        updated_at=datetime.now(timezone.utc),
     )
 
 

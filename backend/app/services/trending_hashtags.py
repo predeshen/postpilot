@@ -1,7 +1,7 @@
 """Trending hashtags service for fetching and caching platform trends."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from app.config import settings
@@ -153,7 +153,7 @@ class TrendingHashtagsService:
         cached_at = self._cache[cache_key].get("cached_at")
         if cached_at is None:
             return False
-        return datetime.utcnow() - cached_at < self._cache_ttl
+        return datetime.now(timezone.utc) - cached_at < self._cache_ttl
 
     async def get_trending_hashtags(
         self,
@@ -194,7 +194,7 @@ class TrendingHashtagsService:
         # Cache the results
         self._cache[cache_key] = {
             "data": combined,
-            "cached_at": datetime.utcnow(),
+            "cached_at": datetime.now(timezone.utc),
         }
 
         logger.info(f"Fetched {len(combined)} trending hashtags for {platform}/{industry}")

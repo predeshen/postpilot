@@ -3,7 +3,7 @@
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -204,7 +204,7 @@ async def publish_content(
         )
 
     post.status = PostStatus.PUBLISHED
-    post.published_at = datetime.utcnow()
+    post.published_at = datetime.now(timezone.utc)
     await db.commit()
 
     return ContentApproveResponse(
