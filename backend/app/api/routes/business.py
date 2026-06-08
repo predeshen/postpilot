@@ -35,6 +35,7 @@ async def setup_business(
         unique_selling_points=request.unique_selling_points,
         languages=request.languages,
         website=request.website,
+        logo_url=request.logo_url,
     )
     db.add(business)
     await db.commit()
@@ -75,7 +76,7 @@ async def upload_logo(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Upload a business logo."""
+    """Upload a business logo (file upload option)."""
     result = await db.execute(
         select(BusinessProfile).where(BusinessProfile.id == business_id)
     )
@@ -116,6 +117,42 @@ async def upload_logo(
     await db.commit()
     await db.refresh(business)
     logger.info(f"Uploaded logo for business: {business.name}")
+    return business
+
+
+@router.post("/logo-url", response_model=BusinessResponse)
+async def set_logo_url(
+    business_id: int = 1,
+    logo_url: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """Set a business logo via URL (alternative to file upload).
+
+    Provide a direct URL to your logo image (PNG, JPEG, SVG).
+    The URL will be stored and used for branding in generated content.
+    """
+    result = await db.execute(
+        select(BusinessProfile).where(BusinessProfile.id == business_id)
+    )
+    business = result.scalar_one_or_none()
+
+    if not business:
+        raise HTTPException(status_code=404, detail="Business profile not found")
+
+    if not logo_url:
+        raise HTTPException(status_code=400, detail="logo_url is required")
+
+    # Basic URL validation
+    if not logo_url.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid URL. Must start with http:// or https://"
+        )
+
+    business.logo_url = logo_url
+    await db.commit()
+    await db.refresh(business)
+    logger.info(f"Set logo URL for business: {business.name} -> {logo_url}")
     return business
 
 

@@ -98,6 +98,7 @@ class BusinessProfile(Base):
     brand_voice = Column(String(100), default="professional")
     brand_colors = Column(JSON, default=list)
     logo_path = Column(String(500), nullable=True)
+    logo_url = Column(String(1000), nullable=True)
     target_audience = Column(Text, nullable=True)
     unique_selling_points = Column(JSON, default=list)
     languages = Column(JSON, default=lambda: ["en"])

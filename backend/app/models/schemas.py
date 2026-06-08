@@ -19,6 +19,7 @@ class BusinessSetupRequest(BaseModel):
     unique_selling_points: List[str] = Field(default_factory=list)
     languages: List[str] = Field(default_factory=lambda: ["en"])
     website: Optional[str] = None
+    logo_url: Optional[str] = Field(None, description="URL to your brand logo (alternative to file upload)")
 
 
 class BusinessUpdateRequest(BaseModel):
@@ -32,6 +33,7 @@ class BusinessUpdateRequest(BaseModel):
     unique_selling_points: Optional[List[str]] = None
     languages: Optional[List[str]] = None
     website: Optional[str] = None
+    logo_url: Optional[str] = Field(None, description="URL to your brand logo (alternative to file upload)")
 
 
 class BusinessResponse(BaseModel):
@@ -43,6 +45,7 @@ class BusinessResponse(BaseModel):
     brand_voice: str
     brand_colors: List[str]
     logo_path: Optional[str] = None
+    logo_url: Optional[str] = None
     target_audience: Optional[str] = None
     unique_selling_points: List[str]
     languages: List[str]
