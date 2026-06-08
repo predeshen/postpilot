@@ -1,14 +1,13 @@
-"""Tests for image generation API endpoints (Bria AI on SageMaker)."""
+"""Tests for image generation API endpoints (Stability AI)."""
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 
 from app.services.image_generator import (
     ImageGeneratorService,
     PLATFORM_DIMENSIONS,
-    BRIA_MODELS,
-    BRIA_ASPECT_RATIOS,
+    PLATFORM_ASPECT_RATIOS,
     _build_image_prompt,
 )
 
@@ -60,35 +59,39 @@ class TestImageGeneratorServiceUnit:
         assert "tiktok" in prompt_tiktok.lower() or "trendy" in prompt_tiktok.lower()
         assert "facebook" in prompt_fb.lower() or "professional" in prompt_fb.lower()
 
-    def test_generate_image_ai_no_endpoint(self):
-        """Test AI generation returns None when endpoint not configured."""
-        # Without SAGEMAKER_ENDPOINT_NAME, should return None
-        result = self.service.generate_image_ai(
-            prompt="test prompt",
-            platform="instagram_feed",
-        )
+    @pytest.mark.asyncio
+    async def test_generate_image_ai_no_api_key(self):
+        """Test AI generation returns None when API key not configured."""
+        with patch("app.services.image_generator.settings") as mock_settings:
+            mock_settings.stability_api_key = None
+            result = await self.service.generate_image_ai(
+                prompt="test prompt",
+                aspect_ratio="1:1",
+            )
         assert result is None
 
-    def test_generate_image_falls_back_to_pillow(self):
+    @pytest.mark.asyncio
+    async def test_generate_image_falls_back_to_pillow(self):
         """Test that generate_image falls back to Pillow when AI fails."""
         import os
 
-        path = self.service.generate_image(
+        path = await self.service.generate_image(
             platform="instagram_feed",
             text="Test content for fallback",
             brand_colors=["#2563EB", "#FF6B6B"],
             business_name="TestBrand",
             output_filename="test_fallback.png",
-            use_ai=True,  # Will fail (no endpoint) and fall back
+            use_ai=True,  # Will fail (no API key) and fall back
         )
         assert os.path.exists(path)
         os.remove(path)
 
-    def test_generate_image_no_ai(self):
+    @pytest.mark.asyncio
+    async def test_generate_image_no_ai(self):
         """Test that use_ai=False skips AI generation."""
         import os
 
-        path = self.service.generate_image(
+        path = await self.service.generate_image(
             platform="instagram_feed",
             text="Test without AI",
             brand_colors=["#2563EB"],
@@ -98,9 +101,10 @@ class TestImageGeneratorServiceUnit:
         assert os.path.exists(path)
         os.remove(path)
 
-    def test_generate_image_from_prompt_no_endpoint(self):
-        """Test on-demand generation returns failure without endpoint."""
-        result = self.service.generate_image_from_prompt(
+    @pytest.mark.asyncio
+    async def test_generate_image_from_prompt_no_api_key(self):
+        """Test on-demand generation returns failure without API key."""
+        result = await self.service.generate_image_from_prompt(
             prompt="A beautiful sunset",
             width=1080,
             height=1080,
@@ -116,68 +120,55 @@ class TestImageGeneratorServiceUnit:
         models = self.service.get_available_models()
         assert len(models) == 3
         model_ids = [m["id"] for m in models]
-        assert "bria-ai-2-3-fast-commercial" in model_ids
-        assert "bria-ai-2-3-commercial" in model_ids
-        assert "bria-ai-2-2-hd-commercial" in model_ids
+        assert "sd3.5-large-turbo" in model_ids
+        assert "sd3.5-large" in model_ids
+        assert "sd3.5-medium" in model_ids
 
-    def test_bria_aspect_ratios(self):
-        """Test Bria aspect ratio mapping."""
-        assert BRIA_ASPECT_RATIOS["instagram_feed"] == "1:1"
-        assert BRIA_ASPECT_RATIOS["tiktok"] == "9:16"
-        assert BRIA_ASPECT_RATIOS["instagram_story"] == "9:16"
-        assert BRIA_ASPECT_RATIOS["facebook_feed"] == "16:9"
-        assert BRIA_ASPECT_RATIOS["facebook_story"] == "9:16"
+    def test_platform_aspect_ratios(self):
+        """Test platform aspect ratio mapping."""
+        assert PLATFORM_ASPECT_RATIOS["instagram_feed"] == "1:1"
+        assert PLATFORM_ASPECT_RATIOS["tiktok"] == "9:16"
+        assert PLATFORM_ASPECT_RATIOS["instagram_story"] == "9:16"
+        assert PLATFORM_ASPECT_RATIOS["facebook_feed"] == "16:9"
+        assert PLATFORM_ASPECT_RATIOS["facebook_story"] == "9:16"
 
-    def test_bria_models_dict(self):
-        """Test Bria models dictionary."""
-        assert BRIA_MODELS["bria-2.3-fast"] == "bria-ai-2-3-fast-commercial"
-        assert BRIA_MODELS["bria-2.3"] == "bria-ai-2-3-commercial"
-        assert BRIA_MODELS["bria-2.2-hd"] == "bria-ai-2-2-hd-commercial"
+    @pytest.mark.asyncio
+    async def test_generate_image_ai_success(self):
+        """Test successful AI image generation with mocked httpx."""
+        import httpx
 
-    def test_generate_image_ai_success(self):
-        """Test successful AI image generation with mocked SageMaker."""
-        import base64
-        import json
-        from io import BytesIO
-        from unittest.mock import MagicMock, patch
+        fake_image_bytes = b"\x89PNG\r\n\x1a\nfake_image_data"
 
-        # Create a small test image in base64
-        test_image_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake_image_data").decode()
-
-        mock_client = MagicMock()
-        response_payload = json.dumps({
-            "result": "success",
-            "artifacts": [{"seed": 42, "image_base64": test_image_b64, "embeddings_base64": []}]
-        }).encode()
-        mock_body = MagicMock()
-        mock_body.read.return_value = response_payload
-        mock_client.invoke_endpoint.return_value = {"Body": mock_body}
-
-        service = ImageGeneratorService()
-        service._sagemaker_client = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = fake_image_bytes
 
         with patch("app.services.image_generator.settings") as mock_settings:
-            mock_settings.sagemaker_endpoint_name = "postpilot-bria"
-            mock_settings.aws_region = "ca-central-1"
+            mock_settings.stability_api_key = "sk-test-key"
+            mock_settings.stability_model = "sd3.5-large-turbo"
 
-            result = service.generate_image_ai(
-                prompt="A test prompt",
-                platform="instagram_feed",
-            )
+            with patch("app.services.image_generator.httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.post = AsyncMock(return_value=mock_response)
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client_cls.return_value = mock_client
 
-        assert result == test_image_b64
-        mock_client.invoke_endpoint.assert_called_once()
+                result = await self.service.generate_image_ai(
+                    prompt="A test prompt",
+                    aspect_ratio="1:1",
+                )
 
-        # Verify the payload sent to SageMaker
-        call_kwargs = mock_client.invoke_endpoint.call_args[1]
-        assert call_kwargs["EndpointName"] == "postpilot-bria"
-        assert call_kwargs["ContentType"] == "application/json"
+        assert result == fake_image_bytes
+        mock_client.post.assert_called_once()
 
-        sent_payload = json.loads(call_kwargs["Body"])
-        assert sent_payload["prompt"] == "A test prompt"
-        assert sent_payload["eula_license_agreement"] is True
-        assert sent_payload["aspect_ratio"] == "1:1"
-        assert sent_payload["steps"] == 20
+        # Verify the request was made correctly
+        call_args = mock_client.post.call_args
+        assert call_args[0][0] == "https://api.stability.ai/v2beta/stable-image/generate/sd3"
+        assert call_args[1]["headers"]["Authorization"] == "Bearer sk-test-key"
+        assert call_args[1]["data"]["prompt"] == "A test prompt"
+        assert call_args[1]["data"]["model"] == "sd3.5-large-turbo"
+        assert call_args[1]["data"]["aspect_ratio"] == "1:1"
 
     def test_dimensions_to_platform(self):
         """Test dimension-to-platform mapping."""
@@ -185,6 +176,13 @@ class TestImageGeneratorServiceUnit:
         assert service._dimensions_to_platform(1080, 1080) == "instagram_feed"
         assert service._dimensions_to_platform(1080, 1920) == "tiktok"
         assert service._dimensions_to_platform(1200, 630) == "facebook_feed"
+
+    def test_dimensions_to_aspect_ratio(self):
+        """Test dimension-to-aspect-ratio mapping."""
+        service = ImageGeneratorService()
+        assert service._dimensions_to_aspect_ratio(1080, 1080) == "1:1"
+        assert service._dimensions_to_aspect_ratio(1080, 1920) == "9:16"
+        assert service._dimensions_to_aspect_ratio(1200, 630) == "16:9"
 
 
 # ============== API Endpoint Tests ==============
@@ -205,7 +203,7 @@ async def test_generate_image_endpoint(client: AsyncClient):
     assert data["width"] == 1080
     assert data["height"] == 1080
     assert data["prompt"] == request_data["prompt"]
-    # Without endpoint configured, success will be False (fallback)
+    # Without API key configured, success will be False
     assert data["success"] is False
 
 
@@ -238,7 +236,7 @@ async def test_list_models_endpoint(client: AsyncClient):
     data = response.json()
     assert "models" in data
     assert "default_model" in data
-    assert data["default_model"] == "bria-ai-2-3-fast-commercial"
+    assert data["default_model"] == "sd3.5-large-turbo"
     assert len(data["models"]) == 3
 
 

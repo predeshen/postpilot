@@ -1,4 +1,4 @@
-"""Image generation API routes using Bria AI on AWS SageMaker."""
+"""Image generation API routes using Stability AI."""
 
 import logging
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.dependencies import get_image_generator
 from app.models.schemas import ImageGenerateRequest, ImageGenerateResponse
-from app.services.image_generator import ImageGeneratorService, BRIA_MODELS, PLATFORM_DIMENSIONS
+from app.services.image_generator import ImageGeneratorService, PLATFORM_DIMENSIONS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/images", tags=["images"])
@@ -17,19 +17,19 @@ async def generate_image(
     request: ImageGenerateRequest,
     image_service: ImageGeneratorService = Depends(get_image_generator),
 ):
-    """Generate an AI image from a text prompt using Bria AI on SageMaker.
+    """Generate an AI image from a text prompt using Stability AI.
 
     This endpoint allows on-demand image generation with custom prompts,
     dimensions, and optional model selection.
 
-    Available models (SageMaker Marketplace):
-    - bria-ai-2-3-fast-commercial (default) - Quick generation
-    - bria-ai-2-3-commercial - Higher quality
-    - bria-ai-2-2-hd-commercial - Highest quality
+    Available models:
+    - sd3.5-large-turbo (default) - Fast, high-quality generation
+    - sd3.5-large - Highest quality, slightly slower
+    - sd3.5-medium - Balanced quality and speed
 
-    Note: Requires a deployed SageMaker endpoint (SAGEMAKER_ENDPOINT_NAME).
+    Note: Requires STABILITY_API_KEY to be configured.
     """
-    result = image_service.generate_image_from_prompt(
+    result = await image_service.generate_image_from_prompt(
         prompt=request.prompt,
         width=request.width,
         height=request.height,
@@ -51,10 +51,10 @@ async def generate_image(
 async def list_available_models(
     image_service: ImageGeneratorService = Depends(get_image_generator),
 ):
-    """List available Bria AI image generation models (SageMaker Marketplace)."""
+    """List available Stability AI image generation models."""
     return {
         "models": image_service.get_available_models(),
-        "default_model": "bria-ai-2-3-fast-commercial",
+        "default_model": "sd3.5-large-turbo",
     }
 
 

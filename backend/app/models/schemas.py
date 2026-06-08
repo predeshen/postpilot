@@ -310,13 +310,13 @@ class CampaignListResponse(BaseModel):
 # ============== Image Generation Schemas ==============
 
 class ImageGenerateRequest(BaseModel):
-    """Request model for on-demand image generation via Bria AI."""
+    """Request model for on-demand image generation via Stability AI."""
     prompt: str = Field(..., min_length=1, max_length=2000, description="Text prompt for image generation")
     width: int = Field(default=1080, ge=256, le=2048, description="Image width in pixels")
     height: int = Field(default=1080, ge=256, le=2048, description="Image height in pixels")
     model_id: Optional[str] = Field(
         default=None,
-        description="Bria model ID. Options: bria-ai-2-3-fast-commercial, bria-ai-2-3-commercial, bria-ai-2-2-hd-commercial"
+        description="Stability AI model ID. Options: sd3.5-large-turbo, sd3.5-large, sd3.5-medium"
     )
 
 

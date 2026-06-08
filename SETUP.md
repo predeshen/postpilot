@@ -1,26 +1,29 @@
-# PostPilot - Complete Setup Guide
+# PostPilot - Setup Guide
 
 ## Prerequisites
-- AWS Account (even a free tier/demo account works)
 - Python 3.9+
+- AWS Account (for Claude text generation via Bedrock)
+- Stability AI account (for image generation)
 - Android Studio (for the mobile app)
 
-## Step 1: Enable AWS Bedrock Model Access (Claude)
+## Step 1: Get a Stability AI API Key (Image Generation)
+1. Go to https://platform.stability.ai/account/keys
+2. Create an account or sign in
+3. Generate an API key
+4. Copy the key (starts with `sk-`)
+
+That is it for image generation. No cloud deployment, no endpoints to manage, no hourly costs.
+
+## Step 2: Enable AWS Bedrock Model Access (Claude - Text Generation)
 1. Sign in to AWS Console: https://console.aws.amazon.com
 2. Go to Amazon Bedrock service (search "Bedrock" in the search bar)
-3. Make sure you are in the **ca-central-1** region (Canada - Central)
+3. Make sure you are in the **eu-central-1** region (Europe - Frankfurt)
 4. In the left sidebar, click "Model access"
 5. Click "Manage model access" button
 6. Check the box for:
    - **Anthropic > Claude 3.5 Sonnet v2** (for text/content generation)
 7. Click "Request model access"
 8. Wait for approval (usually instant for Claude)
-
-## Step 2: Subscribe to Bria AI (SageMaker Marketplace)
-1. Go to AWS Marketplace: https://aws.amazon.com/marketplace
-2. Search for "Bria 2.3 Fast Commercial"
-3. Subscribe to the model (free to subscribe, you pay per endpoint usage)
-4. Note: You need to DEPLOY an endpoint before it can be used (see Step below)
 
 ## Step 3: Create AWS Access Keys
 1. Go to IAM in AWS Console: https://console.aws.amazon.com/iam
@@ -34,10 +37,7 @@
      "Statement": [
        {
          "Effect": "Allow",
-         "Action": [
-           "bedrock:InvokeModel",
-           "sagemaker:InvokeEndpoint"
-         ],
+         "Action": ["bedrock:InvokeModel"],
          "Resource": "*"
        }
      ]
@@ -50,49 +50,7 @@
 10. Choose "Application running outside AWS"
 11. Copy the Access Key ID and Secret Access Key (save them!)
 
-## Step 4: Deploy Bria Image Model (SageMaker)
-
-The Bria AI model is a Marketplace model that requires a SageMaker endpoint deployment.
-
-### Option A: Deploy via AWS Console
-1. Go to SageMaker > Marketplace models in ca-central-1
-2. Find "Bria 2.3 Fast Commercial" (you should already be subscribed)
-3. Click "Deploy"
-4. Choose instance type: `ml.g5.xlarge` (GPU required for image generation)
-5. Set endpoint name: `postpilot-bria` (or any name you prefer)
-6. Deploy and wait for status to show "InService" (5-10 minutes)
-7. Update your `.env` file: `SAGEMAKER_ENDPOINT_NAME=postpilot-bria`
-
-### Option B: Deploy via AWS CLI
-```bash
-# Create the model
-aws sagemaker create-model \
-  --model-name postpilot-bria \
-  --primary-container ModelPackageName=arn:aws:sagemaker:ca-central-1:aws:hub-content/SageMakerPublicHub/Model/bria-ai-2-3-fast-commercial/4.1.4 \
-  --execution-role-name your-sagemaker-role \
-  --region ca-central-1
-
-# Create endpoint config
-aws sagemaker create-endpoint-config \
-  --endpoint-config-name postpilot-bria-config \
-  --production-variants VariantName=default,ModelName=postpilot-bria,InstanceType=ml.g5.xlarge,InitialInstanceCount=1 \
-  --region ca-central-1
-
-# Create endpoint
-aws sagemaker create-endpoint \
-  --endpoint-name postpilot-bria \
-  --endpoint-config-name postpilot-bria-config \
-  --region ca-central-1
-```
-
-### Important Cost Note
-SageMaker endpoints run 24/7 while active. The `ml.g5.xlarge` costs approximately $1.50/hour.
-To save costs during development:
-- Delete the endpoint when not testing: `aws sagemaker delete-endpoint --endpoint-name postpilot-bria --region ca-central-1`
-- Re-create it when needed (takes 5-10 min to spin up)
-- For production, consider using SageMaker Serverless Inference if available for this model
-
-## Step 5: Configure the Backend
+## Step 4: Configure and Run the Backend
 1. Clone the repo:
    ```bash
    git clone https://github.com/predeshen/postpilot.git
@@ -109,12 +67,16 @@ To save costs during development:
    ```
 4. Create a `.env` file in the `backend/` folder:
    ```
+   # AWS Bedrock (Claude - text generation)
    AWS_ACCESS_KEY_ID=AKIA...your_key...
    AWS_SECRET_ACCESS_KEY=your_secret_key_here
-   AWS_REGION=ca-central-1
+   AWS_REGION=eu-central-1
    BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
-   BEDROCK_IMAGE_MODEL_ID=bria-ai-2-3-fast-commercial
-   SAGEMAKER_ENDPOINT_NAME=postpilot-bria
+
+   # Stability AI (image generation)
+   STABILITY_API_KEY=sk-your-stability-key-here
+   STABILITY_MODEL=sd3.5-large-turbo
+
    DEBUG=true
    ```
 5. Run the server:
@@ -124,23 +86,23 @@ To save costs during development:
 6. Test it: Open http://localhost:8000/docs in your browser
 7. Try the health check: http://localhost:8000/health
 
-## Step 6: Test Connectivity
-Once the backend is running, test AWS connectivity:
+Done! No cloud deployment needed. Everything runs from your PC.
+
+## Step 5: Test Connectivity
+Once the backend is running, test service connectivity:
 
 ```bash
-# Test Claude (text generation)
+# Test Claude (text generation via AWS Bedrock)
 curl http://localhost:8000/api/diagnostics/test-claude
 
-# Test Bria (image generation via SageMaker)
-curl http://localhost:8000/api/diagnostics/test-bria
+# Test Stability AI (image generation)
+curl http://localhost:8000/api/diagnostics/test-stability
 
-# Test both at once
+# Test everything at once
 curl http://localhost:8000/api/diagnostics/test-aws
 ```
 
-If Bria returns `"status": "not_deployed"`, you need to deploy the SageMaker endpoint first (Step 4).
-
-## Step 7: Set Up the Android App
+## Step 6: Set Up the Android App
 1. Download and install Android Studio: https://developer.android.com/studio
 2. Open Android Studio > File > Open > select the `android-app/` folder
 3. Wait for Gradle sync to complete (may take a few minutes first time)
@@ -151,75 +113,42 @@ If Bria returns `"status": "not_deployed"`, you need to deploy the SageMaker end
 6. Click the green "Run" button in Android Studio
 7. The app will install on your device/emulator
 
-## Step 8: Build the APK (for sharing/installing)
+## Step 7: Build the APK (for sharing/installing)
 1. In Android Studio: Build > Build Bundle(s) / APK(s) > Build APK(s)
 2. The APK will be at: `android-app/app/build/outputs/apk/debug/app-debug.apk`
 3. Transfer this APK to any Android phone to install
 
-## Step 9: Deploy Backend to AWS (Production)
-1. Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
-2. Install SAM CLI: https://docs.aws.amazon.com/sam/latest/userguide/install-sam-cli.html
-3. Configure AWS CLI:
-   ```bash
-   aws configure
-   # Enter your Access Key ID
-   # Enter your Secret Access Key
-   # Region: ca-central-1
-   # Output format: json
-   ```
-4. Deploy:
-   ```bash
-   cd backend
-   chmod +x deploy-aws.sh
-   ./deploy-aws.sh
-   ```
-5. After deployment, you will get an API Gateway URL like:
-   `https://abc123.execute-api.ca-central-1.amazonaws.com`
-6. Update the Android app's BASE_URL in `app/build.gradle.kts` with this URL
-7. Rebuild the APK
+## Architecture
 
-## Image Generation Architecture
+PostPilot uses two AI services:
 
-PostPilot uses **two separate AWS services** for AI:
+| Feature | Service | Model | How |
+|---------|---------|-------|-----|
+| Text/Content Generation | AWS Bedrock | Claude 3.5 Sonnet v2 | API call (pay per use) |
+| Image Generation | Stability AI | SD 3.5 Large Turbo | API call (pay per use) |
 
-| Feature | AWS Service | Model | Region |
-|---------|-------------|-------|--------|
-| Text/Content Generation | Bedrock | Claude 3.5 Sonnet v2 | ca-central-1 |
-| Image Generation | SageMaker | Bria 2.3 Fast Commercial | ca-central-1 |
+Both are simple API calls. No servers to manage, no endpoints to deploy, no hourly costs.
 
-**Why SageMaker for Bria?**
-Bria 2.3 Fast Commercial is a Marketplace model. Unlike Claude which is directly available via Bedrock, Bria requires you to deploy a SageMaker endpoint. The model runs on a GPU instance that you control.
+### Stability AI Request Format
+```
+POST https://api.stability.ai/v2beta/stable-image/generate/sd3
+Content-Type: multipart/form-data
+Authorization: Bearer sk-...
 
-### Bria Input Format (SageMaker)
-```json
-{
-    "prompt": "A professional photo of a product",
-    "steps": 20,
-    "eula_license_agreement": true,
-    "seed": 42,
-    "aspect_ratio": "1:1",
-    "negative_prompt": "text, watermark, blurry"
-}
+prompt=A professional social media visual
+model=sd3.5-large-turbo
+aspect_ratio=1:1
+output_format=png
 ```
 
-### Bria Output Format (SageMaker)
-```json
-{
-    "result": "success",
-    "artifacts": [
-        {
-            "seed": 1525972691,
-            "image_base64": "...base64 encoded image...",
-            "embeddings_base64": ["..."]
-        }
-    ]
-}
-```
+### Stability AI Response
+Returns raw image bytes directly (Content-Type: image/png).
 
 ### Supported Aspect Ratios
-- `1:1` - Instagram Feed (1080x1080)
-- `9:16` - TikTok, Instagram/Facebook Stories (1080x1920)
-- `16:9` - Facebook Feed (1200x630)
+- `1:1` - Instagram Feed
+- `9:16` - TikTok, Instagram/Facebook Stories
+- `16:9` - Facebook Feed
+- `4:5`, `5:4`, `3:2`, `2:3` - Additional options
 
 ## API Endpoints for Image Generation
 
@@ -227,7 +156,7 @@ Bria 2.3 Fast Commercial is a Marketplace model. Unlike Claude which is directly
 |--------|----------|-------------|
 | POST | `/api/images/generate` | Generate an image from a custom prompt |
 | POST | `/api/content/{post_id}/generate-image` | Generate an image for a specific post |
-| GET | `/api/images/models` | List available Bria AI models |
+| GET | `/api/images/models` | List available Stability AI models |
 | GET | `/api/images/platforms` | List platform dimensions |
 
 ### Example: Generate a custom image
@@ -242,32 +171,31 @@ POST /api/images/generate
 
 ## How It Works
 
-1. **Content Generation**: Claude 3.5 Sonnet v2 (via Bedrock) generates text content, hashtags, and ad copy
-2. **Image Generation**: Bria AI (via SageMaker) generates professional images based on:
+1. **Content Generation**: Claude 3.5 Sonnet v2 (via AWS Bedrock) generates text content, hashtags, and ad copy
+2. **Trending Analysis**: Claude analyzes current trends and generates relevant hashtag suggestions
+3. **Image Generation**: Stability AI generates professional images based on:
    - The post content/concept
    - Your brand colors and industry
    - The target platform aspect ratio
-3. **Fallback**: If the SageMaker endpoint is not deployed or unavailable, the system falls back to Pillow-based template images with your brand colors and text overlay
-4. **Cost**: You only pay per API call for Claude. For Bria, you pay for the SageMaker endpoint while it runs (~$1.50/hr for ml.g5.xlarge). The Lambda backend scales to zero when idle.
-
-## Troubleshooting
-
-- **"Endpoint not configured"** - Set `SAGEMAKER_ENDPOINT_NAME` in your `.env` file after deploying the Bria endpoint.
-- **"ModelError" from SageMaker** - The endpoint may still be spinning up. Wait for status "InService" in the SageMaker console.
-- **"AccessDeniedException" for Bedrock** - Model access not enabled. Go to Bedrock > Model access and enable Claude.
-- **"AccessDeniedException" for SageMaker** - Add `sagemaker:InvokeEndpoint` to your IAM policy.
-- **"No credentials"** - Check your `.env` file has the correct AWS keys.
-- **App cannot connect** - Make sure the backend is running and the URL is correct for your device type.
-- **Fallback images showing** - This means the SageMaker endpoint is not reachable or not configured. Check your endpoint status.
+4. **Fallback**: If the Stability AI key is not set, the system falls back to Pillow-based template images with your brand colors and text overlay
+5. **Cost**: You only pay per API call. No running servers, no hourly costs.
 
 ## Cost Estimation (South African Rand)
 
-Based on current AWS pricing:
-- **Claude 3.5 Sonnet v2**: ~R0.50 per content generation request
-- **Bria via SageMaker**: ~R27/hour while endpoint is running (ml.g5.xlarge)
-- **Lambda hosting**: Free tier covers ~1 million requests/month
-- **Total for 100 posts/month**: Claude cost + endpoint time during generation
+Based on current pricing:
+- **Claude 3.5 Sonnet v2** (Bedrock): ~R0.50 per content generation request
+- **Stability AI** (SD 3.5 Large Turbo): ~R1.00 per image (based on credit pricing)
+- **Backend hosting**: Free when running locally. Lambda scales to zero if deployed.
+- **Total for 100 posts/month with images**: ~R150
 
-**Cost-saving tip**: Only run the SageMaker endpoint when generating images. Delete it when done. A batch of 100 images takes about 10-15 minutes, costing roughly R5-R7.
+No monthly server costs. No SageMaker endpoints running 24/7.
 
-No monthly server costs for the API itself - Lambda scales to zero and only costs when the app makes requests.
+## Troubleshooting
+
+- **"STABILITY_API_KEY not configured"** - Add your Stability AI key to the `.env` file.
+- **"API error 403"** - Your Stability AI key may be invalid or expired. Check at https://platform.stability.ai/account/keys
+- **"API error 402"** - Insufficient credits on your Stability AI account. Top up at https://platform.stability.ai
+- **"AccessDeniedException" for Bedrock** - Model access not enabled. Go to Bedrock > Model access and enable Claude.
+- **"No credentials"** - Check your `.env` file has the correct AWS keys.
+- **App cannot connect** - Make sure the backend is running and the URL is correct for your device type.
+- **Fallback images showing** - This means the Stability AI key is not set or API returned an error.

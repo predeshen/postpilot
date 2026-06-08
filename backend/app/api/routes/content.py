@@ -91,7 +91,7 @@ async def generate_content(
                 elif request.platform == "facebook":
                     platform_key = "facebook_feed"
 
-                image_path = image_service.generate_image(
+                image_path = await image_service.generate_image(
                     platform=platform_key,
                     text=variant.get("content", "")[:100],
                     brand_colors=business.brand_colors,
@@ -281,7 +281,7 @@ async def generate_post_image(
     db: AsyncSession = Depends(get_db),
     image_service: ImageGeneratorService = Depends(get_image_generator),
 ):
-    """Generate an AI image for a specific post using Bria AI on Bedrock.
+    """Generate an AI image for a specific post using Stability AI.
 
     Uses the post content and associated business brand identity to generate
     a relevant image for the post's target platform.
@@ -312,7 +312,7 @@ async def generate_post_image(
     business_name = business.name if business else None
     industry = business.industry if business else None
 
-    image_path = image_service.generate_image(
+    image_path = await image_service.generate_image(
         platform=platform_key,
         text=post.content[:200],
         brand_colors=brand_colors,

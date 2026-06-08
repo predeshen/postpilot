@@ -1,16 +1,16 @@
-"""Diagnostics API routes for testing AWS connectivity.
+"""Diagnostics API routes for testing service connectivity.
 
 Provides separate endpoints for testing:
-- Claude text model via Bedrock
-- Bria image model via SageMaker
+- Claude text model via AWS Bedrock
+- Stability AI image generation
 - Combined test for convenience
 """
 
-import base64
 import json
 import logging
 
 import boto3
+import httpx
 from botocore.exceptions import ClientError, NoCredentialsError
 from fastapi import APIRouter
 
@@ -91,103 +91,69 @@ async def test_claude_connection():
     return result
 
 
-@router.get("/test-bria")
-async def test_bria_connection():
-    """Test Bria image model connectivity via AWS SageMaker.
+@router.get("/test-stability")
+async def test_stability_connection():
+    """Test Stability AI image generation connectivity.
 
     Verifies:
-    1. SageMaker endpoint name is configured
-    2. AWS credentials are configured
-    3. SageMaker endpoint can generate an image
+    1. Stability API key is configured
+    2. API endpoint is reachable
+    3. Image generation works
     """
     result = {
         "status": "error",
-        "endpoint_name": settings.sagemaker_endpoint_name,
-        "region": settings.aws_region,
+        "api_configured": bool(settings.stability_api_key),
+        "model": settings.stability_model,
         "message": "Not tested",
         "image_size_bytes": None,
     }
 
-    # Check if endpoint is configured
-    if not settings.sagemaker_endpoint_name:
-        result["status"] = "not_deployed"
-        result["message"] = (
-            "Endpoint not configured - deploy Bria first. "
-            "Set SAGEMAKER_ENDPOINT_NAME in your .env file."
-        )
+    if not settings.stability_api_key:
+        result["message"] = "STABILITY_API_KEY not configured"
         return result
 
-    # Check if credentials are configured
-    if not settings.aws_access_key_id or not settings.aws_secret_access_key:
-        result["message"] = "AWS credentials not configured"
-        return result
+    # Try generating a small test image
+    headers = {
+        "Authorization": f"Bearer {settings.stability_api_key}",
+        "Accept": "image/*",
+    }
+    data = {
+        "prompt": "test",
+        "model": settings.stability_model,
+        "aspect_ratio": "1:1",
+        "output_format": "png",
+    }
 
-    # Initialize SageMaker Runtime client
     try:
-        session = boto3.Session(
-            region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-        )
-        sagemaker_client = session.client("sagemaker-runtime")
-    except NoCredentialsError as e:
-        result["message"] = f"Credentials error: {e}"
-        return result
-    except Exception as e:
-        result["message"] = f"Session error: {e}"
-        return result
-
-    # Test Bria via SageMaker endpoint
-    try:
-        payload = json.dumps({
-            "prompt": "test image",
-            "steps": 8,
-            "eula_license_agreement": True,
-            "seed": 42,
-            "aspect_ratio": "1:1",
-            "negative_prompt": "text, watermark",
-        })
-
-        response = sagemaker_client.invoke_endpoint(
-            EndpointName=settings.sagemaker_endpoint_name,
-            ContentType="application/json",
-            Accept="application/json",
-            Body=payload,
-        )
-
-        response_body = json.loads(response["Body"].read())
-
-        if response_body.get("result") == "success" and "artifacts" in response_body:
-            if len(response_body["artifacts"]) > 0:
-                image_base64 = response_body["artifacts"][0]["image_base64"]
-                image_bytes = base64.b64decode(image_base64)
-                result["status"] = "connected"
-                result["message"] = "Success"
-                result["image_size_bytes"] = len(image_bytes)
-            else:
-                result["message"] = "No artifacts in response"
-        else:
-            result["message"] = (
-                f"Unexpected response format: {list(response_body.keys())}"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://api.stability.ai/v2beta/stable-image/generate/sd3",
+                headers=headers,
+                data=data,
             )
 
-    except ClientError as e:
-        error_msg = e.response.get("Error", {}).get("Message", str(e))
-        result["message"] = f"SageMaker error: {error_msg}"
+            if response.status_code == 200:
+                result["status"] = "connected"
+                result["message"] = "Success"
+                result["image_size_bytes"] = len(response.content)
+            else:
+                result["message"] = f"API error {response.status_code}: {response.text[:200]}"
+    except httpx.TimeoutException:
+        result["message"] = "Request timed out"
     except Exception as e:
-        result["message"] = f"SageMaker error: {e}"
+        result["message"] = f"Request failed: {e}"
 
     return result
 
 
 @router.get("/test-aws")
 async def test_aws_connection():
-    """Test all AWS connectivity (Claude via Bedrock + Bria via SageMaker).
+    """Test all service connectivity (Claude via Bedrock + Stability AI).
 
     Runs both tests and returns combined results for convenience.
     """
     claude_result = await test_claude_connection()
-    bria_result = await test_bria_connection()
+    stability_result = await test_stability_connection()
 
     return {
         "aws_credentials_configured": bool(
@@ -195,5 +161,5 @@ async def test_aws_connection():
         ),
         "aws_region": settings.aws_region,
         "bedrock_text_model": claude_result,
-        "sagemaker_image_model": bria_result,
+        "stability_image_model": stability_result,
     }

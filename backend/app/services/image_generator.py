@@ -1,38 +1,25 @@
-"""Image generation service using Bria AI models via AWS SageMaker.
+"""Image generation service using Stability AI (Stable Diffusion 3.5 Large Turbo).
 
-Bria 2.3 Fast Commercial is a SageMaker Marketplace model that requires
-a deployed SageMaker endpoint. It is NOT a direct Bedrock model.
-
-Falls back to Pillow-based template generation when the SageMaker endpoint
-is not configured or unavailable.
+Uses the Stability AI REST API for high-quality AI image generation.
+Falls back to Pillow-based template generation when the API key is not set.
 """
 
 import base64
 import io
-import json
 import logging
 import os
-import random
 import textwrap
 from typing import Dict, List, Optional, Tuple
 
-import boto3
-from botocore.exceptions import ClientError, NoCredentialsError
+import httpx
 from PIL import Image, ImageDraw, ImageFont
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Available Bria models on SageMaker Marketplace
-BRIA_MODELS = {
-    "bria-2.3-fast": "bria-ai-2-3-fast-commercial",
-    "bria-2.3": "bria-ai-2-3-commercial",
-    "bria-2.2-hd": "bria-ai-2-2-hd-commercial",
-}
-
-# Bria aspect ratios (SageMaker model uses aspect ratios, not pixel dimensions)
-BRIA_ASPECT_RATIOS = {
+# Platform aspect ratios for Stability AI
+PLATFORM_ASPECT_RATIOS = {
     "tiktok": "9:16",
     "instagram_feed": "1:1",
     "instagram_story": "9:16",
@@ -106,17 +93,15 @@ def _build_image_prompt(
     style: str = "bold_text",
     platform: str = "instagram_feed",
 ) -> str:
-    """Build a descriptive prompt for Bria AI image generation.
+    """Build a descriptive prompt for Stability AI image generation.
 
     Incorporates brand identity, colors, industry context, and platform
     to generate relevant social media visuals.
     """
-    # Base prompt from the content
     prompt_parts = []
 
     # Add the core content/concept
     if text:
-        # Trim long content to use as concept guidance
         concept = text[:200] if len(text) > 200 else text
         prompt_parts.append(f"A professional social media post visual about: {concept}")
     else:
@@ -164,116 +149,79 @@ def _build_image_prompt(
 
 
 class ImageGeneratorService:
-    """Service for generating social media images using Bria AI on SageMaker.
+    """Service for generating social media images using Stability AI.
 
-    Primary: Uses Bria AI models via SageMaker endpoint for AI-generated images.
-    Fallback: Uses Pillow-based template generation when endpoint is unavailable.
+    Primary: Uses Stability AI SD3.5 Large Turbo for AI-generated images.
+    Fallback: Uses Pillow-based template generation when API key is not set.
     """
 
     def __init__(self):
         """Initialize the image generator service."""
         self._output_dir = os.path.join(os.getcwd(), "generated_images")
         os.makedirs(self._output_dir, exist_ok=True)
-        self._sagemaker_client = None
 
-    @property
-    def sagemaker_client(self):
-        """Lazy initialization of boto3 SageMaker Runtime client."""
-        if self._sagemaker_client is None:
-            try:
-                session_kwargs = {"region_name": settings.aws_region}
-                if settings.aws_access_key_id and settings.aws_secret_access_key:
-                    session_kwargs["aws_access_key_id"] = settings.aws_access_key_id
-                    session_kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
-
-                session = boto3.Session(**session_kwargs)
-                self._sagemaker_client = session.client("sagemaker-runtime")
-            except (NoCredentialsError, Exception) as e:
-                logger.warning(f"Failed to initialize SageMaker client: {e}")
-                self._sagemaker_client = None
-        return self._sagemaker_client
-
-    def generate_image_ai(
+    async def generate_image_ai(
         self,
         prompt: str,
-        platform: str = "instagram_feed",
+        aspect_ratio: str = "1:1",
         negative_prompt: str = "text, watermark, blurry, low quality",
-        steps: int = 20,
-        seed: Optional[int] = None,
-    ) -> Optional[str]:
-        """Generate an image using Bria AI on SageMaker.
+    ) -> Optional[bytes]:
+        """Generate image using Stability AI SD3.5 Large Turbo.
 
         Args:
             prompt: Text prompt describing the image to generate.
-            platform: Platform key to determine aspect ratio.
+            aspect_ratio: Aspect ratio string (1:1, 9:16, 16:9, etc.).
             negative_prompt: Things to avoid in the generated image.
-            steps: Number of inference steps (higher = better quality, slower).
-            seed: Random seed for reproducibility. None for random.
 
         Returns:
-            Base64-encoded image string, or None if generation fails.
+            Raw image bytes, or None if generation fails.
         """
-        if not settings.sagemaker_endpoint_name:
+        if not settings.stability_api_key:
             logger.warning(
-                "SageMaker endpoint not configured. "
-                "Set SAGEMAKER_ENDPOINT_NAME to use Bria AI image generation."
+                "Stability AI API key not configured. "
+                "Set STABILITY_API_KEY to use AI image generation."
             )
             return None
 
-        if self.sagemaker_client is None:
-            logger.warning("SageMaker client not available for image generation")
-            return None
+        url = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
+        headers = {
+            "Authorization": f"Bearer {settings.stability_api_key}",
+            "Accept": "image/*",
+        }
 
-        # Determine aspect ratio from platform
-        aspect_ratio = BRIA_ASPECT_RATIOS.get(platform, "1:1")
-
-        # Use random seed if not specified
-        if seed is None:
-            seed = random.randint(1, 2**31 - 1)
+        data = {
+            "prompt": prompt,
+            "model": settings.stability_model,
+            "aspect_ratio": aspect_ratio,
+            "negative_prompt": negative_prompt,
+            "output_format": "png",
+        }
 
         try:
-            payload = json.dumps({
-                "prompt": prompt,
-                "steps": steps,
-                "eula_license_agreement": True,
-                "seed": seed,
-                "aspect_ratio": aspect_ratio,
-                "negative_prompt": negative_prompt,
-            })
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url, headers=headers, data=data)
 
-            response = self.sagemaker_client.invoke_endpoint(
-                EndpointName=settings.sagemaker_endpoint_name,
-                ContentType="application/json",
-                Accept="application/json",
-                Body=payload,
-            )
-
-            result = json.loads(response["Body"].read())
-
-            # Bria SageMaker response format
-            if result.get("result") == "success" and "artifacts" in result:
-                if len(result["artifacts"]) > 0:
-                    image_base64 = result["artifacts"][0]["image_base64"]
+                if response.status_code == 200:
                     logger.info(
-                        f"Successfully generated image via SageMaker "
-                        f"(endpoint={settings.sagemaker_endpoint_name}, "
-                        f"aspect_ratio={aspect_ratio})"
+                        f"Successfully generated image via Stability AI "
+                        f"(model={settings.stability_model}, "
+                        f"aspect_ratio={aspect_ratio}, "
+                        f"size={len(response.content)} bytes)"
                     )
-                    return image_base64
-
-            logger.error(f"Unexpected Bria response format: {list(result.keys())}")
-            return None
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "Unknown")
-            error_msg = e.response.get("Error", {}).get("Message", str(e))
-            logger.error(f"SageMaker API error ({error_code}): {error_msg}")
+                    return response.content
+                else:
+                    logger.error(
+                        f"Stability AI error: {response.status_code} - {response.text[:500]}"
+                    )
+                    return None
+        except httpx.TimeoutException:
+            logger.error("Stability AI request timed out")
             return None
         except Exception as e:
-            logger.error(f"Image generation failed: {e}")
+            logger.error(f"Stability AI request failed: {e}")
             return None
 
-    def generate_image(
+    async def generate_image(
         self,
         platform: str,
         text: str,
@@ -287,7 +235,7 @@ class ImageGeneratorService:
     ) -> str:
         """Generate a social media image.
 
-        Attempts AI generation via Bria/SageMaker first, falls back to Pillow templates.
+        Attempts AI generation via Stability AI first, falls back to Pillow templates.
 
         Args:
             platform: Platform key (tiktok, instagram_feed, etc.)
@@ -303,7 +251,6 @@ class ImageGeneratorService:
         Returns:
             Path to the generated image file
         """
-        # Get dimensions for the platform
         dimensions = PLATFORM_DIMENSIONS.get(platform, PLATFORM_DIMENSIONS["instagram_feed"])
         width = dimensions["width"]
         height = dimensions["height"]
@@ -324,20 +271,19 @@ class ImageGeneratorService:
                 platform=platform,
             )
 
-            image_base64 = self.generate_image_ai(
+            aspect_ratio = PLATFORM_ASPECT_RATIOS.get(platform, "1:1")
+            image_bytes = await self.generate_image_ai(
                 prompt=prompt,
-                platform=platform,
+                aspect_ratio=aspect_ratio,
             )
 
-            if image_base64:
-                # Save the AI-generated image
-                image_data = base64.b64decode(image_base64)
+            if image_bytes:
                 with open(output_path, "wb") as f:
-                    f.write(image_data)
-                logger.info(f"Saved AI-generated image: {output_path} ({width}x{height})")
+                    f.write(image_bytes)
+                logger.info(f"Saved AI-generated image: {output_path}")
                 return output_path
             else:
-                logger.info("AI generation failed, falling back to Pillow template")
+                logger.info("AI generation unavailable, falling back to Pillow template")
 
         # Fallback: Pillow-based template generation
         return self._generate_pillow_fallback(
@@ -352,7 +298,7 @@ class ImageGeneratorService:
             height=height,
         )
 
-    def generate_image_from_prompt(
+    async def generate_image_from_prompt(
         self,
         prompt: str,
         width: int = 1080,
@@ -372,45 +318,58 @@ class ImageGeneratorService:
         Returns:
             Dict with base64 image data, file path, and metadata.
         """
-        # Map width/height to the closest platform for aspect ratio
-        platform = self._dimensions_to_platform(width, height)
+        # Map width/height to aspect ratio
+        aspect_ratio = self._dimensions_to_aspect_ratio(width, height)
 
-        image_base64 = self.generate_image_ai(
+        image_bytes = await self.generate_image_ai(
             prompt=prompt,
-            platform=platform,
+            aspect_ratio=aspect_ratio,
         )
 
+        image_base64 = None
+        if image_bytes:
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
         result = {
-            "success": image_base64 is not None,
+            "success": image_bytes is not None,
             "base64": image_base64,
             "width": width,
             "height": height,
-            "model_id": model_id or settings.bedrock_image_model_id,
+            "model_id": model_id or settings.stability_model,
             "prompt": prompt,
             "file_path": None,
         }
 
         # Also save to file if generation succeeded
-        if image_base64:
+        if image_bytes:
             if output_filename is None:
                 output_filename = f"custom_{width}x{height}_{os.getpid()}.png"
             output_path = os.path.join(self._output_dir, output_filename)
-            image_data = base64.b64decode(image_base64)
             with open(output_path, "wb") as f:
-                f.write(image_data)
+                f.write(image_bytes)
             result["file_path"] = output_path
 
         return result
 
-    def _dimensions_to_platform(self, width: int, height: int) -> str:
-        """Map pixel dimensions to the closest platform key for aspect ratio."""
+    def _dimensions_to_aspect_ratio(self, width: int, height: int) -> str:
+        """Map pixel dimensions to the closest aspect ratio string."""
         ratio = width / height if height > 0 else 1.0
         if ratio > 1.5:
-            return "facebook_feed"  # 16:9
+            return "16:9"
         elif ratio < 0.7:
-            return "tiktok"  # 9:16
+            return "9:16"
         else:
-            return "instagram_feed"  # 1:1
+            return "1:1"
+
+    def _dimensions_to_platform(self, width: int, height: int) -> str:
+        """Map pixel dimensions to the closest platform key."""
+        ratio = width / height if height > 0 else 1.0
+        if ratio > 1.5:
+            return "facebook_feed"
+        elif ratio < 0.7:
+            return "tiktok"
+        else:
+            return "instagram_feed"
 
     def _generate_pillow_fallback(
         self,
@@ -424,8 +383,7 @@ class ImageGeneratorService:
         width: int,
         height: int,
     ) -> str:
-        """Generate image using Pillow templates (fallback when SageMaker unavailable)."""
-        # Get style settings
+        """Generate image using Pillow templates (fallback when Stability AI unavailable)."""
         style_config = TEMPLATE_STYLES.get(style, TEMPLATE_STYLES["bold_text"])
 
         # Determine colors
@@ -580,7 +538,7 @@ class ImageGeneratorService:
                 b = int(color_start[2] + (color_end[2] - color_start[2]) * ratio)
                 draw.line([(x, 0), (x, height)], fill=(r, g, b))
 
-    def generate_all_platform_variants(
+    async def generate_all_platform_variants(
         self,
         text: str,
         brand_colors: List[str] = None,
@@ -607,7 +565,7 @@ class ImageGeneratorService:
         results = {}
         for platform_key in PLATFORM_DIMENSIONS:
             filename = f"{prefix}_{platform_key}.png"
-            path = self.generate_image(
+            path = await self.generate_image(
                 platform=platform_key,
                 text=text,
                 brand_colors=brand_colors,
@@ -633,18 +591,23 @@ class ImageGeneratorService:
         return PLATFORM_DIMENSIONS
 
     def get_available_models(self) -> List[Dict]:
-        """Get list of available Bria AI models (SageMaker Marketplace)."""
+        """Get list of available Stability AI models."""
         return [
             {
-                "id": model_id,
-                "name": name,
-                "description": desc,
-            }
-            for name, model_id, desc in [
-                ("bria-2.3-fast", "bria-ai-2-3-fast-commercial", "Quick generation, real-time use (default)"),
-                ("bria-2.3", "bria-ai-2-3-commercial", "Higher quality, slightly slower"),
-                ("bria-2.2-hd", "bria-ai-2-2-hd-commercial", "Highest quality, best for final ad creatives"),
-            ]
+                "id": "sd3.5-large-turbo",
+                "name": "Stable Diffusion 3.5 Large Turbo",
+                "description": "Fast, high-quality generation (default)",
+            },
+            {
+                "id": "sd3.5-large",
+                "name": "Stable Diffusion 3.5 Large",
+                "description": "Highest quality, slightly slower",
+            },
+            {
+                "id": "sd3.5-medium",
+                "name": "Stable Diffusion 3.5 Medium",
+                "description": "Balanced quality and speed",
+            },
         ]
 
 

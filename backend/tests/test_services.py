@@ -250,10 +250,11 @@ class TestImageGenerator:
     def setup_method(self):
         self.service = ImageGeneratorService()
 
-    def test_generate_image_all_platforms(self):
+    @pytest.mark.asyncio
+    async def test_generate_image_all_platforms(self):
         """Test image generation for all platform dimensions."""
         for platform_key, dims in PLATFORM_DIMENSIONS.items():
-            path = self.service.generate_image(
+            path = await self.service.generate_image(
                 platform=platform_key,
                 text="Test content for image generation",
                 brand_colors=["#2980B9", "#E74C3C"],
@@ -271,12 +272,13 @@ class TestImageGenerator:
             # Cleanup
             os.remove(path)
 
-    def test_generate_image_all_styles(self):
+    @pytest.mark.asyncio
+    async def test_generate_image_all_styles(self):
         """Test image generation with all template styles."""
         from app.services.image_generator import TEMPLATE_STYLES
 
         for style_name in TEMPLATE_STYLES:
-            path = self.service.generate_image(
+            path = await self.service.generate_image(
                 platform="instagram_feed",
                 text="Style test content",
                 brand_colors=["#1ABC9C"],
@@ -286,9 +288,10 @@ class TestImageGenerator:
             assert os.path.exists(path)
             os.remove(path)
 
-    def test_generate_image_default_colors(self):
+    @pytest.mark.asyncio
+    async def test_generate_image_default_colors(self):
         """Test image generation with default colors (no brand colors)."""
-        path = self.service.generate_image(
+        path = await self.service.generate_image(
             platform="facebook_feed",
             text="Default color test",
             output_filename="test_default_colors.png",
@@ -296,9 +299,10 @@ class TestImageGenerator:
         assert os.path.exists(path)
         os.remove(path)
 
-    def test_generate_all_platform_variants(self):
+    @pytest.mark.asyncio
+    async def test_generate_all_platform_variants(self):
         """Test generating images for all platforms at once."""
-        results = self.service.generate_all_platform_variants(
+        results = await self.service.generate_all_platform_variants(
             text="Multi-platform test",
             brand_colors=["#9B59B6", "#3498DB"],
             prefix="test_all",

@@ -399,7 +399,7 @@ Generate 5 creatives that a media buyer would be excited to test."""
         industry: Optional[str] = None,
         placement: str = "feed",
     ) -> Optional[str]:
-        """Generate an image for a campaign creative using Bria AI via SageMaker.
+        """Generate an image for a campaign creative using Stability AI.
 
         Args:
             image_concept: The image concept description from the creative.
@@ -411,7 +411,7 @@ Generate 5 creatives that a media buyer would be excited to test."""
         Returns:
             Base64-encoded image string, or None if generation fails.
         """
-        from app.services.image_generator import image_generator_service, _build_image_prompt
+        from app.services.image_generator import image_generator_service, _build_image_prompt, PLATFORM_ASPECT_RATIOS
 
         # Map placement to platform for aspect ratio
         placement_to_platform = {
@@ -431,12 +431,16 @@ Generate 5 creatives that a media buyer would be excited to test."""
             platform=platform,
         )
 
-        image_base64 = image_generator_service.generate_image_ai(
+        aspect_ratio = PLATFORM_ASPECT_RATIOS.get(platform, "1:1")
+        image_bytes = await image_generator_service.generate_image_ai(
             prompt=prompt,
-            platform=platform,
+            aspect_ratio=aspect_ratio,
         )
 
-        return image_base64
+        if image_bytes:
+            import base64
+            return base64.b64encode(image_bytes).decode("utf-8")
+        return None
 
 
 # Singleton instance
