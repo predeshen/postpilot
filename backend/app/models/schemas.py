@@ -122,6 +122,21 @@ class TrendsResponse(BaseModel):
     updated_at: datetime
 
 
+class TrendingTopicResponse(BaseModel):
+    """Response model for a single trending topic."""
+    title: str
+    description: str
+    relevance_score: float
+    content_angles: List[str]
+
+
+class TrendingTopicsResponse(BaseModel):
+    """Response model for trending topics endpoint."""
+    industry: str
+    topics: List[TrendingTopicResponse]
+    updated_at: datetime
+
+
 class CompetitorAnalysisResponse(BaseModel):
     """Response model for competitor analysis."""
     competitor_name: str

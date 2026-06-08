@@ -247,3 +247,78 @@ async def test_aws_combined_success(client):
     assert data["aws_credentials_configured"] is True
     assert data["bedrock_text_model"]["status"] == "connected"
     assert data["stability_image_model"]["status"] == "connected"
+
+
+# ============== Test Firecrawl Endpoint ==============
+
+
+@pytest.mark.asyncio
+async def test_firecrawl_no_api_key(client):
+    """Test Firecrawl endpoint when API key is not configured."""
+    with patch("app.api.routes.diagnostics.settings") as mock_settings:
+        mock_settings.firecrawl_api_key = None
+
+        response = await client.get("/api/diagnostics/test-firecrawl")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert data["api_configured"] is False
+    assert "not configured" in data["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_firecrawl_success(client):
+    """Test Firecrawl endpoint with successful response."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": [
+            {"title": "Result 1", "markdown": "# Trending"},
+            {"title": "Result 2", "markdown": "# More trends"},
+        ]
+    }
+
+    with patch("app.api.routes.diagnostics.settings") as mock_settings:
+        mock_settings.firecrawl_api_key = "fc-test-key"
+
+        with patch("app.api.routes.diagnostics.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_cls.return_value = mock_client
+
+            response = await client.get("/api/diagnostics/test-firecrawl")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "connected"
+    assert data["message"] == "Success"
+    assert data["search_results_count"] == 2
+    assert data["api_configured"] is True
+
+
+@pytest.mark.asyncio
+async def test_firecrawl_api_error(client):
+    """Test Firecrawl endpoint when API returns an error."""
+    mock_response = MagicMock()
+    mock_response.status_code = 401
+    mock_response.text = "Invalid API key"
+
+    with patch("app.api.routes.diagnostics.settings") as mock_settings:
+        mock_settings.firecrawl_api_key = "fc-invalid-key"
+
+        with patch("app.api.routes.diagnostics.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_cls.return_value = mock_client
+
+            response = await client.get("/api/diagnostics/test-firecrawl")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "error"
+    assert "401" in data["message"]

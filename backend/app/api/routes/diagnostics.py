@@ -3,6 +3,7 @@
 Provides separate endpoints for testing:
 - Claude text model via AWS Bedrock
 - Stability AI image generation
+- Firecrawl web scraping
 - Combined test for convenience
 """
 
@@ -148,12 +149,13 @@ async def test_stability_connection():
 
 @router.get("/test-aws")
 async def test_aws_connection():
-    """Test all service connectivity (Claude via Bedrock + Stability AI).
+    """Test all service connectivity (Claude via Bedrock + Stability AI + Firecrawl).
 
-    Runs both tests and returns combined results for convenience.
+    Runs all tests and returns combined results for convenience.
     """
     claude_result = await test_claude_connection()
     stability_result = await test_stability_connection()
+    firecrawl_result = await test_firecrawl_connection()
 
     return {
         "aws_credentials_configured": bool(
@@ -162,4 +164,59 @@ async def test_aws_connection():
         "aws_region": settings.aws_region,
         "bedrock_text_model": claude_result,
         "stability_image_model": stability_result,
+        "firecrawl_scraping": firecrawl_result,
     }
+
+
+@router.get("/test-firecrawl")
+async def test_firecrawl_connection():
+    """Test Firecrawl web scraping connectivity.
+
+    Verifies:
+    1. Firecrawl API key is configured
+    2. API endpoint is reachable
+    3. Search functionality works
+    """
+    result = {
+        "status": "error",
+        "api_configured": bool(settings.firecrawl_api_key),
+        "message": "Not tested",
+        "search_results_count": None,
+    }
+
+    if not settings.firecrawl_api_key:
+        result["message"] = "FIRECRAWL_API_KEY not configured"
+        return result
+
+    # Try a simple search to verify the API key works
+    headers = {
+        "Authorization": f"Bearer {settings.firecrawl_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "query": "trending social media hashtags",
+        "limit": 2,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.firecrawl.dev/v1/search",
+                headers=headers,
+                json=payload,
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                results_count = len(data.get("data", []))
+                result["status"] = "connected"
+                result["message"] = "Success"
+                result["search_results_count"] = results_count
+            else:
+                result["message"] = f"API error {response.status_code}: {response.text[:200]}"
+    except httpx.TimeoutException:
+        result["message"] = "Request timed out"
+    except Exception as e:
+        result["message"] = f"Request failed: {e}"
+
+    return result

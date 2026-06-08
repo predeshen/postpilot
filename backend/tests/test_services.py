@@ -348,7 +348,7 @@ class TestTrendingHashtags:
 
     @pytest.mark.asyncio
     async def test_get_trending_hashtags(self):
-        """Test fetching trending hashtags."""
+        """Test fetching trending hashtags (falls back to curated data without API key)."""
         hashtags = await self.service.get_trending_hashtags(
             platform="instagram",
             industry="technology",
@@ -368,6 +368,31 @@ class TestTrendingHashtags:
         assert result1 == result2
 
     @pytest.mark.asyncio
+    async def test_get_trending_topics(self):
+        """Test fetching trending topics (falls back without API key)."""
+        topics = await self.service.get_trending_topics("fitness")
+        assert len(topics) > 0
+        assert all("title" in t for t in topics)
+        assert all("description" in t for t in topics)
+        assert all("relevance_score" in t for t in topics)
+        assert all("content_angles" in t for t in topics)
+
+    @pytest.mark.asyncio
+    async def test_get_trending_topics_caching(self):
+        """Test that topics are cached properly."""
+        result1 = await self.service.get_trending_topics("technology")
+        result2 = await self.service.get_trending_topics("technology")
+        assert result1 == result2
+
+    @pytest.mark.asyncio
+    async def test_analyze_competitor_no_api_key(self):
+        """Test competitor analysis returns unavailable without API key."""
+        result = await self.service.analyze_competitor("testbrand", "instagram")
+        assert result is not None
+        assert result["status"] == "unavailable"
+        assert result["competitor_handle"] == "testbrand"
+
+    @pytest.mark.asyncio
     async def test_get_competitor_analysis(self):
         """Test competitor analysis."""
         competitors = await self.service.get_competitor_analysis("technology")
@@ -384,11 +409,35 @@ class TestTrendingHashtags:
         )
         assert 0.0 <= score <= 1.0
 
+    @pytest.mark.asyncio
+    async def test_score_hashtag_relevance_unknown(self):
+        """Test hashtag relevance scoring for unknown hashtag."""
+        score = await self.service.score_hashtag_relevance(
+            "#unknownhashtag", "technology", "tiktok"
+        )
+        assert score == 0.5
+
     def test_clear_cache(self):
         """Test cache clearing."""
         self.service._cache["test_key"] = {"data": [], "cached_at": None}
         self.service.clear_cache()
         assert len(self.service._cache) == 0
+
+    def test_get_fallback_hashtags(self):
+        """Test fallback hashtag data retrieval."""
+        hashtags = self.service._get_fallback_hashtags("instagram", "fitness")
+        assert len(hashtags) > 0
+        assert all(h["hashtag"].startswith("#") for h in hashtags)
+        # Should be sorted by score descending
+        scores = [h["score"] for h in hashtags]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_get_fallback_topics(self):
+        """Test fallback topics data retrieval."""
+        topics = self.service._get_fallback_topics("fitness")
+        assert len(topics) == 5
+        assert all("title" in t for t in topics)
+        assert all(0.0 <= t["relevance_score"] <= 1.0 for t in topics)
 
 
 # ============== Content Scheduler Tests ==============

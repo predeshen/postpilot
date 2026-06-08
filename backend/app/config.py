@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     stability_api_key: Optional[str] = None
     stability_model: str = "sd3.5-large-turbo"
 
+    # Firecrawl (web scraping for trends)
+    firecrawl_api_key: Optional[str] = None
+
     # Scheduler
     scheduler_enabled: bool = True
     scheduler_timezone: str = "Africa/Johannesburg"
